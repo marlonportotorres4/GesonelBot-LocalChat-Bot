@@ -1,0 +1,2 @@
+# Interface do usuário
+gradio==4.13.0 
