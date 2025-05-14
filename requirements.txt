@@ -1,2 +1,20 @@
 # Interface do usuário
-gradio==4.13.0 
+gradio==3.50.2
+pydantic>=1.10.8,<2.0.0
+
+# Processamento de documentos
+langchain>=0.0.325
+
+# Extração de texto
+python-docx>=0.8.11
+pypdf>=3.15.1
+
+# Banco de dados vetorial
+chromadb>=0.4.18
+
+# Ambiente
+python-dotenv>=1.0.0
+
+# Compatibilidade Python 3.13
+setuptools>=69.0.2
+audioop-lts>=0.0.2 
