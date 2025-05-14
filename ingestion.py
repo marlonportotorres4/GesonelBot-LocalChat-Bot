@@ -6,10 +6,24 @@ extrair seu conteúdo e preparar os dados para indexação.
 """
 import os
 from typing import List, Dict, Optional
+import config
 
-# Configurações
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploaded_docs")
-VECTORSTORE_DIR = os.path.join(os.path.dirname(__file__), "vectorstore")
+# Importações para processamento de documentos
+try:
+    import docx
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+try:
+    import pypdf
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
+# Configurações carregadas do módulo config
+UPLOAD_DIR = config.UPLOAD_DIR
+VECTORSTORE_DIR = config.VECTORSTORE_DIR
 
 def extract_text_from_txt(file_path: str) -> str:
     """
@@ -31,7 +45,7 @@ def extract_text_from_txt(file_path: str) -> str:
 
 def extract_text_from_docx(file_path: str) -> str:
     """
-    Extrai texto de um arquivo DOCX. (Stub - será implementado na próxima fase)
+    Extrai texto de um arquivo DOCX.
     
     Args:
         file_path: Caminho para o arquivo DOCX
@@ -39,12 +53,32 @@ def extract_text_from_docx(file_path: str) -> str:
     Returns:
         Texto extraído do arquivo ou mensagem de erro
     """
-    # Placeholder - será implementado com python-docx
-    return f"[Texto simulado de {os.path.basename(file_path)}] A extração real será implementada na próxima fase."
+    if not DOCX_AVAILABLE:
+        return f"[Biblioteca python-docx não instalada] Não foi possível extrair o texto de {os.path.basename(file_path)}"
+    
+    try:
+        # Carregar o documento
+        doc = docx.Document(file_path)
+        
+        # Extrair texto de todos os parágrafos
+        full_text = []
+        for para in doc.paragraphs:
+            full_text.append(para.text)
+            
+        # Extrair texto de tabelas
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    full_text.append(cell.text)
+        
+        # Juntar todo o texto com quebras de linha
+        return '\n'.join(full_text)
+    except Exception as e:
+        return f"[Erro ao processar DOCX: {str(e)}] Não foi possível extrair o texto de {os.path.basename(file_path)}"
 
 def extract_text_from_pdf(file_path: str) -> str:
     """
-    Extrai texto de um arquivo PDF. (Stub - será implementado na próxima fase)
+    Extrai texto de um arquivo PDF.
     
     Args:
         file_path: Caminho para o arquivo PDF
@@ -52,8 +86,24 @@ def extract_text_from_pdf(file_path: str) -> str:
     Returns:
         Texto extraído do arquivo ou mensagem de erro
     """
-    # Placeholder - será implementado com PyPDF
-    return f"[Texto simulado de {os.path.basename(file_path)}] A extração real será implementada na próxima fase."
+    if not PDF_AVAILABLE:
+        return f"[Biblioteca pypdf não instalada] Não foi possível extrair o texto de {os.path.basename(file_path)}"
+    
+    try:
+        text = []
+        # Abrir o PDF
+        with open(file_path, 'rb') as file:
+            reader = pypdf.PdfReader(file)
+            
+            # Extrair texto de cada página
+            for page_num in range(len(reader.pages)):
+                page = reader.pages[page_num]
+                text.append(page.extract_text())
+        
+        # Juntar todo o texto com quebras de linha
+        return '\n'.join(text)
+    except Exception as e:
+        return f"[Erro ao processar PDF: {str(e)}] Não foi possível extrair o texto de {os.path.basename(file_path)}"
 
 def process_document(file_path: str) -> Dict[str, str]:
     """
