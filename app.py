@@ -7,14 +7,14 @@ o upload de documentos e a interação com perguntas e respostas.
 import os
 import gradio as gr
 from ingestion import ingest_documents
+from qa_engine import answer_question as qa_answer
+import config
 
-# Configurações de pastas
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploaded_docs")
-VECTORSTORE_DIR = os.path.join(os.path.dirname(__file__), "vectorstore")
-
-# Configurações do aplicativo
-MAX_FILE_SIZE_MB = 20  # Tamanho máximo de arquivo em MB
-MAX_FILES = 10          # Número máximo de arquivos permitidos
+# Configurações carregadas do módulo config
+UPLOAD_DIR = config.UPLOAD_DIR
+VECTORSTORE_DIR = config.VECTORSTORE_DIR
+MAX_FILE_SIZE_MB = config.MAX_FILE_SIZE_MB
+MAX_FILES = config.MAX_FILES
 
 # Garantir que as pastas existam
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -129,19 +129,20 @@ def save_file(files):
 
 def answer_question(question):
     """
-    Função temporária para responder perguntas (será substituída pela implementação real).
+    Função para responder perguntas utilizando o motor de QA.
     
     Parâmetros:
         question (str): A pergunta do usuário
         
     Retorna:
-        str: Uma resposta simulada
+        str: Resposta baseada nos documentos processados
     """
     if not question:
         return "Por favor, faça uma pergunta."
     
-    # Resposta temporária
-    return f"Sua pergunta foi: '{question}'\n\nA funcionalidade de resposta inteligente será implementada em breve."
+    # Utilizando o motor de QA para responder à pergunta
+    result = qa_answer(question)
+    return result["answer"]
 
 # Interface principal do Gradio
 with gr.Blocks(title="GesonelBot - Seu chat bot local") as demo:
