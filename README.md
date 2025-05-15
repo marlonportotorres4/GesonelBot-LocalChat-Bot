@@ -72,9 +72,6 @@ Este projeto tem como objetivo criar um chatbot simples que permite:
    - No Windows: `scripts\setup.bat`
    - No Linux/macOS: `bash scripts/setup.sh`
 
-3. Configure o arquivo .env (opcional):
-   - Copie o arquivo `env.example` para `.env`
-   - Edite o arquivo `.env` conforme necessário
 
 > **Nota:** Os diretórios para armazenamento de documentos (`uploaded_docs`) e banco de dados vetorial (`vectorstore`) são criados automaticamente na primeira execução. Você não precisa criá-los manualmente.
 
