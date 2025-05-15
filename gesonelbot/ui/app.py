@@ -6,15 +6,9 @@ o upload de documentos e a interação com perguntas e respostas.
 """
 import os
 import gradio as gr
-from ingestion import ingest_documents
-from qa_engine import answer_question as qa_answer
-import config
-
-# Configurações carregadas do módulo config
-UPLOAD_DIR = config.UPLOAD_DIR
-VECTORSTORE_DIR = config.VECTORSTORE_DIR
-MAX_FILE_SIZE_MB = config.MAX_FILE_SIZE_MB
-MAX_FILES = config.MAX_FILES
+from gesonelbot.core.document_processor import ingest_documents
+from gesonelbot.core.qa_engine import answer_question as qa_answer
+from gesonelbot.config.settings import UPLOAD_DIR, VECTORSTORE_DIR, MAX_FILE_SIZE_MB, MAX_FILES
 
 # Garantir que as pastas existam
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -145,82 +139,98 @@ def answer_question(question):
     return result["answer"]
 
 # Interface principal do Gradio
-with gr.Blocks(title="GesonelBot - Seu chat bot local") as demo:
-    # Cabeçalho
-    gr.Markdown("# 📚 GesonelBot")
-    gr.Markdown("### Faça upload de documentos e pergunte sobre eles")
+def create_interface():
+    """
+    Cria a interface Gradio para a aplicação.
     
-    # Aba de Upload de Documentos
-    with gr.Tab("Upload de Documentos"):
-        with gr.Column():
-            # Componente para upload de arquivos
-            files_input = gr.File(
-                file_count="multiple",  # Permitir múltiplos arquivos
-                label="Carregar documentos (PDF, DOCX, TXT)",
-                file_types=["pdf", "docx", "txt", ".pdf", ".docx", ".txt"]  # Tentar diferentes formatos de especificação
-            )
-            
-            # Explicação sobre formatos suportados
+    Returns:
+        Interface Gradio
+    """
+    with gr.Blocks(title="GesonelBot - Seu chat bot local") as demo:
+        # Cabeçalho
+        gr.Markdown("# 📚 GesonelBot")
+        gr.Markdown("### Faça upload de documentos e pergunte sobre eles")
+        
+        # Aba de Upload de Documentos
+        with gr.Tab("Upload de Documentos"):
+            with gr.Column():
+                # Componente para upload de arquivos
+                files_input = gr.File(
+                    file_count="multiple",  # Permitir múltiplos arquivos
+                    label="Carregar documentos (PDF, DOCX, TXT)",
+                    file_types=["pdf", "docx", "txt", ".pdf", ".docx", ".txt"]  # Tentar diferentes formatos de especificação
+                )
+                
+                # Explicação sobre formatos suportados
+                gr.Markdown("""
+                **Formatos suportados:**
+                - PDF (`.pdf`) - Documentos, artigos, manuais
+                - Word (`.docx`) - Documentos do Microsoft Word
+                - Texto (`.txt`) - Arquivos de texto simples
+                """)
+                
+                # Botão para iniciar o processamento
+                upload_button = gr.Button("Processar Documentos", variant="primary")
+                
+                # Área para exibição de status
+                upload_output = gr.Textbox(
+                    label="Status",
+                    placeholder="Os resultados do processamento aparecerão aqui...",
+                    interactive=False
+                )
+                
+                # Conectar o botão à função de processamento
+                upload_button.click(save_file, inputs=[files_input], outputs=[upload_output])
+        
+        # Aba de Perguntas e Respostas
+        with gr.Tab("Fazer Perguntas"):
+            with gr.Column():
+                # Campo para inserir pergunta
+                question_input = gr.Textbox(
+                    label="Sua pergunta sobre os documentos",
+                    placeholder="Ex: O que é mencionado sobre..."
+                )
+                
+                # Botão para enviar pergunta
+                answer_button = gr.Button("Perguntar", variant="primary")
+                
+                # Área para exibir resposta
+                answer_output = gr.Textbox(
+                    label="Resposta",
+                    placeholder="A resposta aparecerá aqui..."
+                )
+                
+                # Conectar botão à função de resposta
+                answer_button.click(answer_question, inputs=[question_input], outputs=[answer_output])
+        
+        # Explicação sobre como funciona
+        with gr.Accordion("Como usar o GesonelBot", open=False):
             gr.Markdown("""
-            **Formatos suportados:**
-            - PDF (`.pdf`) - Documentos, artigos, manuais
-            - Word (`.docx`) - Documentos do Microsoft Word
-            - Texto (`.txt`) - Arquivos de texto simples
+            ### Instruções de uso:
+            
+            1. **Upload de Documentos**:
+               - Na primeira aba, faça upload de arquivos PDF, DOCX ou TXT
+               - Clique no botão "Processar Documentos"
+               - Aguarde o processamento (isto pode levar alguns segundos)
+            
+            2. **Fazer Perguntas**:
+               - Vá para a segunda aba
+               - Digite sua pergunta sobre o conteúdo dos documentos
+               - Clique em "Perguntar"
+               - O sistema buscará informações relevantes e responderá
+            
+            **Nota:** Esta é a versão inicial do GesonelBot. Funcionalidades adicionais serão implementadas em breve.
             """)
-            
-            # Botão para iniciar o processamento
-            upload_button = gr.Button("Processar Documentos", variant="primary")
-            
-            # Área para exibição de status
-            upload_output = gr.Textbox(
-                label="Status",
-                placeholder="Os resultados do processamento aparecerão aqui...",
-                interactive=False
-            )
-            
-            # Conectar o botão à função de processamento
-            upload_button.click(save_file, inputs=[files_input], outputs=[upload_output])
     
-    # Aba de Perguntas e Respostas
-    with gr.Tab("Fazer Perguntas"):
-        with gr.Column():
-            # Campo para inserir pergunta
-            question_input = gr.Textbox(
-                label="Sua pergunta sobre os documentos",
-                placeholder="Ex: O que é mencionado sobre..."
-            )
-            
-            # Botão para enviar pergunta
-            answer_button = gr.Button("Perguntar", variant="primary")
-            
-            # Área para exibir resposta
-            answer_output = gr.Textbox(
-                label="Resposta",
-                placeholder="A resposta aparecerá aqui..."
-            )
-            
-            # Conectar botão à função de resposta
-            answer_button.click(answer_question, inputs=[question_input], outputs=[answer_output])
-    
-    # Explicação sobre como funciona
-    with gr.Accordion("Como usar o GesonelBot", open=False):
-        gr.Markdown("""
-        ### Instruções de uso:
-        
-        1. **Upload de Documentos**:
-           - Na primeira aba, faça upload de arquivos PDF, DOCX ou TXT
-           - Clique no botão "Processar Documentos"
-           - Aguarde o processamento (isto pode levar alguns segundos)
-        
-        2. **Fazer Perguntas**:
-           - Vá para a segunda aba
-           - Digite sua pergunta sobre o conteúdo dos documentos
-           - Clique em "Perguntar"
-           - O sistema buscará informações relevantes e responderá
-        
-        **Nota:** Esta é a versão inicial do GesonelBot. Funcionalidades adicionais serão implementadas em breve.
-        """)
+    return demo
 
-# Iniciar a aplicação quando o script é executado diretamente
-if __name__ == "__main__":
-    demo.launch(share=False) 
+# Função para iniciar a aplicação
+def launch_app(share=False):
+    """
+    Inicia a aplicação Gradio.
+    
+    Args:
+        share (bool): Se True, compartilha a interface publicamente
+    """
+    demo = create_interface()
+    demo.launch(share=share) 

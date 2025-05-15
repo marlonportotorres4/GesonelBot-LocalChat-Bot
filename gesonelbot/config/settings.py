@@ -12,11 +12,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Diretório base do projeto
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Diretório de dados
+DATA_DIR = os.path.join(BASE_DIR, "gesonelbot", "data")
 
 # Configurações de pastas
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploaded_docs")
-VECTORSTORE_DIR = os.path.join(BASE_DIR, "vectorstore")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploaded_docs")
+VECTORSTORE_DIR = os.path.join(DATA_DIR, "vectorstore")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 # Garantir que as pastas existam

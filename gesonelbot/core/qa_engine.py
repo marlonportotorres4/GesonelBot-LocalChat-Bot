@@ -6,10 +6,7 @@ utilizando técnicas de recuperação de informação e IA.
 """
 import os
 from typing import List, Dict, Optional
-import config
-
-# Configurações carregadas do módulo config
-VECTORSTORE_DIR = config.VECTORSTORE_DIR
+from gesonelbot.config.settings import VECTORSTORE_DIR
 
 def answer_question(question: str, top_k: int = 5) -> Dict[str, str]:
     """

@@ -1,12 +1,12 @@
 """
-Módulo de processamento e ingestão de documentos
+Processamento de documentos do GesonelBot
 
 Este módulo é responsável por processar os documentos carregados pelos usuários,
 extrair seu conteúdo e preparar os dados para indexação.
 """
 import os
 from typing import List, Dict, Optional
-import config
+from gesonelbot.config.settings import UPLOAD_DIR, VECTORSTORE_DIR
 
 # Importações para processamento de documentos
 try:
@@ -20,10 +20,6 @@ try:
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
-
-# Configurações carregadas do módulo config
-UPLOAD_DIR = config.UPLOAD_DIR
-VECTORSTORE_DIR = config.VECTORSTORE_DIR
 
 def extract_text_from_txt(file_path: str) -> str:
     """
