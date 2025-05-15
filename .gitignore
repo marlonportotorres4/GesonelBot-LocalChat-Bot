@@ -178,5 +178,6 @@ cython_debug/
 .gradio
 
 # Dados específicos da aplicação
-uploaded_docs/
-vectorstore/
+gesonelbot/data/uploaded_docs/
+gesonelbot/data/vectorstore/
+models/
