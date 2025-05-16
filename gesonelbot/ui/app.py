@@ -14,6 +14,24 @@ from gesonelbot.config.settings import UPLOAD_DIR, VECTORSTORE_DIR, MAX_FILE_SIZ
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(VECTORSTORE_DIR, exist_ok=True)
 
+def get_directory_size():
+    """
+    Calcula o tamanho total dos arquivos no diretório de upload.
+    
+    Retorna:
+        tuple: (tamanho em MB, número de arquivos)
+    """
+    total_size = 0
+    file_count = 0
+    
+    for dirpath, _, filenames in os.walk(UPLOAD_DIR):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+            file_count += 1
+    
+    return total_size / (1024 * 1024), file_count  # Converter para MB
+
 def save_file(files):
     """
     Salva os arquivos enviados pelo usuário no diretório de upload e inicia o processamento.
@@ -29,16 +47,31 @@ def save_file(files):
         return "⚠️ Nenhum arquivo selecionado. Por favor, escolha arquivos para upload."
     
     # Verificar limite de arquivos
-    if len(files) > MAX_FILES:
-        return f"⚠️ Número máximo de arquivos excedido. Limite: {MAX_FILES} arquivos."
+    current_size, current_files = get_directory_size()
+    new_files_count = len(files)
     
-    # Informações de debug
-    print(f"Recebido {len(files)} arquivo(s) para processamento")
-    for i, file in enumerate(files):
-        print(f"Arquivo {i+1}: Tipo = {type(file).__name__}")
+    if current_files + new_files_count > MAX_FILES:
+        return f"⚠️ Número máximo de arquivos excedido. Limite: {MAX_FILES} arquivos (atualmente: {current_files})"
     
     # Lista para armazenar caminhos dos arquivos salvos
     file_paths = []
+    total_new_size = 0
+    
+    # Primeiro, calcular o tamanho total dos novos arquivos
+    for file in files:
+        try:
+            if hasattr(file, 'read'):
+                content = file.read()
+                total_new_size += len(content)
+                file.seek(0)  # Resetar o ponteiro do arquivo
+            elif isinstance(file, str) and os.path.exists(file):
+                total_new_size += os.path.getsize(file)
+        except Exception as e:
+            return f"❌ Erro ao verificar tamanho do arquivo: {str(e)}"
+    
+    # Verificar se o tamanho total excede o limite
+    if current_size + (total_new_size / (1024 * 1024)) > MAX_FILE_SIZE_MB:
+        return f"⚠️ Capacidade total excedida. Limite: {MAX_FILE_SIZE_MB}MB (atualmente: {current_size:.2f}MB)"
     
     # Iterar sobre cada arquivo e salvá-lo
     for file in files:
@@ -59,7 +92,7 @@ def save_file(files):
                 # Para objetos tipo arquivo
                 content = file.read()
                 
-                # Verificar tamanho do arquivo
+                # Verificar tamanho do arquivo individual
                 if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
                     return f"⚠️ Arquivo {file_name} excede o limite de {MAX_FILE_SIZE_MB}MB"
                 
@@ -68,7 +101,7 @@ def save_file(files):
                     
             elif isinstance(file, str) and os.path.exists(file):
                 # Para caminhos de arquivos (comum no Gradio)
-                # Verificar tamanho do arquivo
+                # Verificar tamanho do arquivo individual
                 if os.path.getsize(file) > MAX_FILE_SIZE_MB * 1024 * 1024:
                     return f"⚠️ Arquivo {file_name} excede o limite de {MAX_FILE_SIZE_MB}MB"
                 
@@ -107,8 +140,11 @@ def save_file(files):
     # Processar os documentos
     try:
         results = ingest_documents(file_paths)
+        current_size, current_files = get_directory_size()
+        
         message = f"✅ {len(files)} arquivo(s) salvo(s) e processado(s) com sucesso!\n\n"
         message += f"📊 {results['success_count']} processados, {results['error_count']} erros.\n"
+        message += f"💾 Uso atual: {current_size:.2f}MB de {MAX_FILE_SIZE_MB}MB ({current_files} de {MAX_FILES} arquivos)\n"
         
         # Adicionar detalhes se houver erros
         if results['error_count'] > 0:
@@ -121,22 +157,27 @@ def save_file(files):
         # Arquivo foi salvo mas houve erro no processamento
         return f"✅ {len(files)} arquivo(s) salvo(s), mas houve erro no processamento: {str(e)}"
 
-def answer_question(question):
+def answer_question(question, chat_history):
     """
     Função para responder perguntas utilizando o motor de QA.
     
     Parâmetros:
         question (str): A pergunta do usuário
+        chat_history (list): Histórico de conversas anteriores
         
     Retorna:
-        str: Resposta baseada nos documentos processados
+        tuple: (histórico atualizado, '')
     """
     if not question:
-        return "Por favor, faça uma pergunta."
+        return chat_history, ""
     
     # Utilizando o motor de QA para responder à pergunta
     result = qa_answer(question)
-    return result["answer"]
+    
+    # Adicionar a pergunta e resposta ao histórico
+    chat_history = chat_history + [(question, result["answer"])]
+    
+    return chat_history, ""
 
 # Interface principal do Gradio
 def create_interface():
@@ -146,10 +187,10 @@ def create_interface():
     Returns:
         Interface Gradio
     """
-    with gr.Blocks(title="GesonelBot - Seu chat bot local") as demo:
+    with gr.Blocks(title="GesonelBot - Seu chat bot local", theme=gr.themes.Soft()) as demo:
         # Cabeçalho
         gr.Markdown("# 📚 GesonelBot")
-        gr.Markdown("### Faça upload de documentos e pergunte sobre eles")
+        gr.Markdown("### Seu assistente de documentos com chat integrado")
         
         # Aba de Upload de Documentos
         with gr.Tab("Upload de Documentos"):
@@ -157,16 +198,21 @@ def create_interface():
                 # Componente para upload de arquivos
                 files_input = gr.File(
                     file_count="multiple",  # Permitir múltiplos arquivos
-                    label="Carregar documentos (PDF, DOCX, TXT)",
+                    label=f"Carregar documentos (PDF, DOCX, TXT) - Limite: {MAX_FILES} arquivos, {MAX_FILE_SIZE_MB}MB total",
                     file_types=["pdf", "docx", "txt", ".pdf", ".docx", ".txt"]  # Tentar diferentes formatos de especificação
                 )
                 
                 # Explicação sobre formatos suportados
-                gr.Markdown("""
+                gr.Markdown(f"""
                 **Formatos suportados:**
                 - PDF (`.pdf`) - Documentos, artigos, manuais
                 - Word (`.docx`) - Documentos do Microsoft Word
                 - Texto (`.txt`) - Arquivos de texto simples
+                
+                **Limites:**
+                - Máximo de arquivos: {MAX_FILES}
+                - Tamanho total máximo: {MAX_FILE_SIZE_MB}MB
+                - Tamanho máximo por arquivo: {MAX_FILE_SIZE_MB}MB
                 """)
                 
                 # Botão para iniciar o processamento
@@ -182,26 +228,73 @@ def create_interface():
                 # Conectar o botão à função de processamento
                 upload_button.click(save_file, inputs=[files_input], outputs=[upload_output])
         
-        # Aba de Perguntas e Respostas
-        with gr.Tab("Fazer Perguntas"):
-            with gr.Column():
-                # Campo para inserir pergunta
-                question_input = gr.Textbox(
-                    label="Sua pergunta sobre os documentos",
-                    placeholder="Ex: O que é mencionado sobre..."
+        # Aba de Chat
+        with gr.Tab("Chat"):
+            # Componente de chat para exibir histórico e mensagens
+            chatbot = gr.Chatbot(
+                label="Conversa",
+                height=500,
+                bubble=True,
+                avatar_images=("👤", "🤖")
+            )
+            
+            # Interface para mensagens do usuário
+            with gr.Row():
+                user_message = gr.Textbox(
+                    placeholder="Digite sua pergunta sobre os documentos...", 
+                    scale=8,
+                    show_label=False,
+                    container=False
                 )
-                
-                # Botão para enviar pergunta
-                answer_button = gr.Button("Perguntar", variant="primary")
-                
-                # Área para exibir resposta
-                answer_output = gr.Textbox(
-                    label="Resposta",
-                    placeholder="A resposta aparecerá aqui..."
-                )
-                
-                # Conectar botão à função de resposta
-                answer_button.click(answer_question, inputs=[question_input], outputs=[answer_output])
+                submit_btn = gr.Button("Enviar", variant="primary", scale=1)
+            
+            # Botões de ação
+            with gr.Row():
+                clear_btn = gr.Button("Limpar Conversa", variant="secondary")
+                example_btn = gr.Button("Pergunta Exemplo", variant="secondary")
+            
+            # Exemplos de perguntas
+            examples = [
+                "O que é mencionado sobre...?",
+                "Quais são os principais tópicos abordados?",
+                "Poderia resumir o documento?",
+                "Qual é a conclusão do texto sobre...?",
+                "Existe alguma menção a...?"
+            ]
+            
+            # Ações dos botões
+            submit_btn.click(
+                answer_question, 
+                [user_message, chatbot], 
+                [chatbot, user_message]
+            )
+            
+            # Também permitir enviar com Enter
+            user_message.submit(
+                answer_question, 
+                [user_message, chatbot], 
+                [chatbot, user_message]
+            )
+            
+            # Limpar conversa
+            clear_btn.click(lambda: [], None, chatbot)
+            
+            # Inserir exemplo
+            def load_example():
+                import random
+                return random.choice(examples)
+            
+            example_btn.click(load_example, None, user_message)
+            
+            # Informações sobre o chat
+            gr.Markdown("""
+            ### Dicas de Uso do Chat
+            
+            - Seja específico em suas perguntas para obter melhores respostas
+            - O assistente tem conhecimento apenas sobre os documentos que você carregou
+            - Use a aba "Upload de Documentos" para adicionar mais conteúdo
+            - Você pode limpar a conversa a qualquer momento
+            """)
         
         # Explicação sobre como funciona
         with gr.Accordion("Como usar o GesonelBot", open=False):
@@ -213,11 +306,12 @@ def create_interface():
                - Clique no botão "Processar Documentos"
                - Aguarde o processamento (isto pode levar alguns segundos)
             
-            2. **Fazer Perguntas**:
-               - Vá para a segunda aba
-               - Digite sua pergunta sobre o conteúdo dos documentos
-               - Clique em "Perguntar"
-               - O sistema buscará informações relevantes e responderá
+            2. **Chat com o Assistente**:
+               - Vá para a segunda aba "Chat"
+               - Digite sua pergunta e pressione Enter ou clique em "Enviar"
+               - O sistema buscará informações relevantes nos documentos e responderá
+               - Seu histórico de conversas ficará visível e organizado
+               - Use "Limpar Conversa" para reiniciar o chat
             
             **Nota:** Esta é a versão inicial do GesonelBot. Funcionalidades adicionais serão implementadas em breve.
             """)
