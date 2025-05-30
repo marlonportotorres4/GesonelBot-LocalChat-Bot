@@ -32,21 +32,53 @@ MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", 20))
 MAX_FILES = int(os.getenv("MAX_FILES", 10))
 
 # Configurações do modelo
-MODEL_TYPE = os.getenv("MODEL_TYPE", "local")
+MODEL_TYPE = os.getenv("MODEL_TYPE", "local")  # local, openai, huggingface
 LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH", os.path.join(MODELS_DIR, "local_model"))
 
 # Configurações de embedding
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "local")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "local")  # local, openai, ou um nome específico de modelo HF
+EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", 384))  # Dimensão padrão para all-MiniLM-L6-v2
+
+# Configurações do banco de dados vetorial
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "gesonelbot_docs")
+DISTANCE_METRIC = os.getenv("DISTANCE_METRIC", "cosine")  # cosine, l2, ip
+
+# Configurações de processamento de documentos
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))  # Tamanho do chunk em caracteres
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 100))  # Sobreposição entre chunks
+
+# Configurações da OpenAI (se aplicável)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
 # Configurações de logging
 ENABLE_DEBUG_LOGGING = os.getenv("ENABLE_DEBUG_LOGGING", "False").lower() == "true"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # Função para verificar se as configurações necessárias estão presentes
 def verify_config():
     """
     Verifica se todas as configurações necessárias estão presentes.
     """
-    if MODEL_TYPE == "openai" and not os.getenv("OPENAI_API_KEY"):
+    all_ok = True
+    
+    # Verificar API keys se necessário
+    if MODEL_TYPE == "openai" and not OPENAI_API_KEY:
         print("AVISO: Modelo OpenAI selecionado, mas OPENAI_API_KEY não configurada no arquivo .env")
-        return False
-    return True 
+        all_ok = False
+        
+    if EMBEDDING_MODEL == "openai" and not OPENAI_API_KEY:
+        print("AVISO: Embeddings OpenAI selecionados, mas OPENAI_API_KEY não configurada no arquivo .env")
+        all_ok = False
+    
+    # Verificar diretórios
+    for dir_path in [UPLOAD_DIR, VECTORSTORE_DIR, MODELS_DIR]:
+        if not os.path.exists(dir_path):
+            try:
+                os.makedirs(dir_path, exist_ok=True)
+                print(f"Diretório criado: {dir_path}")
+            except Exception as e:
+                print(f"AVISO: Não foi possível criar o diretório {dir_path}: {str(e)}")
+                all_ok = False
+    
+    return all_ok 

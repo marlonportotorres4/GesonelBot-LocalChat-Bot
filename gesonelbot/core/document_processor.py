@@ -7,9 +7,26 @@ extrair seu conteúdo e preparar os dados para indexação.
 import os
 import mimetypes
 import hashlib
-from typing import List, Dict, Optional, Tuple
+import logging
+from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
-from gesonelbot.config.settings import UPLOAD_DIR, VECTORSTORE_DIR
+
+# Importar componentes do LangChain para processamento de texto
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.docstore.document import Document
+
+# Importar configurações e componentes do GesonelBot
+from gesonelbot.config.settings import (
+    UPLOAD_DIR, 
+    VECTORSTORE_DIR, 
+    CHUNK_SIZE, 
+    CHUNK_OVERLAP
+)
+from gesonelbot.core.embeddings_manager import embeddings_manager
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Configurar tipos MIME suportados
 SUPPORTED_MIME_TYPES = {
@@ -24,12 +41,14 @@ try:
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
+    logger.warning("Biblioteca python-docx não encontrada. O processamento de arquivos DOCX não estará disponível.")
 
 try:
     import pypdf
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
+    logger.warning("Biblioteca pypdf não encontrada. O processamento de arquivos PDF não estará disponível.")
 
 def extract_text_from_txt(file_path: str) -> str:
     """
@@ -42,10 +61,12 @@ def extract_text_from_txt(file_path: str) -> str:
         Texto extraído do arquivo
     """
     try:
+        # Primeiro tenta com codificação UTF-8
         with open(file_path, 'r', encoding='utf-8') as file:
             return file.read()
     except UnicodeDecodeError:
-        # Tentar com codificação alternativa se UTF-8 falhar
+        # Se falhar, tenta com codificação alternativa
+        logger.info(f"Falha ao decodificar {file_path} com UTF-8, tentando latin-1")
         with open(file_path, 'r', encoding='latin-1') as file:
             return file.read()
 
@@ -80,6 +101,7 @@ def extract_text_from_docx(file_path: str) -> str:
         # Juntar todo o texto com quebras de linha
         return '\n'.join(full_text)
     except Exception as e:
+        logger.error(f"Erro ao processar DOCX {file_path}: {str(e)}")
         return f"[Erro ao processar DOCX: {str(e)}] Não foi possível extrair o texto de {os.path.basename(file_path)}"
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -109,6 +131,7 @@ def extract_text_from_pdf(file_path: str) -> str:
         # Juntar todo o texto com quebras de linha
         return '\n'.join(text)
     except Exception as e:
+        logger.error(f"Erro ao processar PDF {file_path}: {str(e)}")
         return f"[Erro ao processar PDF: {str(e)}] Não foi possível extrair o texto de {os.path.basename(file_path)}"
 
 def validate_file(file_path: str) -> Tuple[bool, str]:
@@ -152,7 +175,7 @@ def get_file_metadata(file_path: str) ->  Dict[str, str]:
     """
     file_stat = os.stat(file_path)
     
-    # Calcular hash do arquivo
+    # Calcular hash do arquivo para identificação única
     file_hash = hashlib.md5()
     with open(file_path, 'rb') as f:
         for chunk in iter(lambda: f.read(4096), b''):
@@ -160,14 +183,16 @@ def get_file_metadata(file_path: str) ->  Dict[str, str]:
     
     return {
         "file_name": os.path.basename(file_path),
+        "file_path": file_path,  # Caminho completo para referência
         "file_size": str(file_stat.st_size),
         "created_at": datetime.fromtimestamp(file_stat.st_ctime).isoformat(),
         "modified_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
         "file_hash": file_hash.hexdigest(),
-        "mime_type": mimetypes.guess_type(file_path)[0]
+        "mime_type": mimetypes.guess_type(file_path)[0],
+        "source": f"uploaded:{os.path.basename(file_path)}"  # Identificador de fonte para citações
     }
 
-def process_document(file_path: str) -> Dict[str, str]:
+def process_document(file_path: str) -> Dict[str, Any]:
     """
     Processa um único documento e extrai seu texto.
     
@@ -180,6 +205,7 @@ def process_document(file_path: str) -> Dict[str, str]:
     # Validar arquivo
     is_valid, message = validate_file(file_path)
     if not is_valid:
+        logger.warning(f"Arquivo inválido: {file_path} - {message}")
         return {
             "status": "error",
             "file_name": os.path.basename(file_path),
@@ -189,6 +215,7 @@ def process_document(file_path: str) -> Dict[str, str]:
     
     # Obter metadados
     metadata = get_file_metadata(file_path)
+    logger.info(f"Processando documento: {metadata['file_name']}")
     
     # Determinar o tipo de arquivo
     file_extension = os.path.splitext(file_path)[1].lower()
@@ -202,6 +229,7 @@ def process_document(file_path: str) -> Dict[str, str]:
         elif file_extension == '.pdf':
             text = extract_text_from_pdf(file_path)
         else:
+            logger.warning(f"Formato não suportado: {file_extension}")
             return {
                 "status": "error",
                 "file_name": metadata["file_name"],
@@ -209,7 +237,18 @@ def process_document(file_path: str) -> Dict[str, str]:
                 "text": ""
             }
             
+        # Verificar se o texto foi extraído com sucesso
+        if not text or text.startswith("[Erro") or text.startswith("[Biblioteca"):
+            logger.warning(f"Falha na extração de texto: {metadata['file_name']}")
+            return {
+                "status": "error",
+                "file_name": metadata["file_name"],
+                "message": f"Falha na extração de texto: {text if text else 'Texto vazio'}",
+                "text": ""
+            }
+            
         # Retornar documento processado com sucesso
+        logger.info(f"Documento processado com sucesso: {metadata['file_name']} ({len(text)} caracteres)")
         return {
             "status": "success",
             "file_name": metadata["file_name"],
@@ -220,6 +259,7 @@ def process_document(file_path: str) -> Dict[str, str]:
         
     except Exception as e:
         # Retornar erro em caso de falha
+        logger.error(f"Erro ao processar documento {file_path}: {str(e)}")
         return {
             "status": "error",
             "file_name": metadata["file_name"],
@@ -252,101 +292,192 @@ def process_documents(file_paths: List[str]) -> Dict[str, object]:
         # Registrar resultado
         if result["status"] == "success":
             results["success_count"] += 1
-            results["processed_files"].append({
-                "file_name": result["file_name"],
-                "char_count": len(result["text"])
-            })
+            results["processed_files"].append(result)  # Manter o resultado completo
         else:
             results["error_count"] += 1
-            results["errors"].append({
-                "file_name": result["file_name"],
-                "message": result["message"]
-            })
+            results["errors"].append(result)  # Manter o resultado completo para debug
     
     return results
 
+def split_text_into_chunks(text: str, metadata: Dict[str, str]) -> List[Document]:
+    """
+    Divide o texto em chunks menores para processamento e indexação.
+    
+    Args:
+        text: Texto a ser dividido
+        metadata: Metadados do documento
+        
+    Returns:
+        Lista de objetos Document do LangChain
+    """
+    if not text or len(text.strip()) == 0:
+        logger.warning(f"Texto vazio para o documento {metadata.get('file_name', 'desconhecido')}")
+        return []
+    
+    try:
+        # Criar um divisor de texto que respeita parágrafos e frases
+        # Usamos RecursiveCharacterTextSplitter para manter a estrutura semântica
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            length_function=len,
+            separators=["\n\n", "\n", ". ", "! ", "? ", ";", ",", " ", ""]
+        )
+        
+        # Dividir o texto em chunks
+        chunks = text_splitter.create_documents(
+            texts=[text],
+            metadatas=[metadata]
+        )
+        
+        logger.info(f"Documento '{metadata.get('file_name')}' dividido em {len(chunks)} chunks")
+        
+        return chunks
+    except Exception as e:
+        logger.error(f"Erro ao dividir texto em chunks: {str(e)}")
+        # Fallback: criar um único documento se a divisão falhar
+        return [Document(page_content=text, metadata=metadata)]
+
 def get_processed_documents_info() -> List[Dict[str, str]]:
     """
-    Obtém informações sobre os documentos já processados.
+    Retorna informações sobre todos os documentos processados.
     
     Returns:
         Lista de dicionários com informações sobre os documentos
     """
-    documents = []
+    if not os.path.exists(UPLOAD_DIR):
+        logger.warning(f"Diretório de upload não existe: {UPLOAD_DIR}")
+        return []
     
-    # Listar arquivos no diretório de uploads
-    if os.path.exists(UPLOAD_DIR):
-        print(f"Buscando documentos em: {UPLOAD_DIR}")
+    documents_info = []
+    
+    try:
         for filename in os.listdir(UPLOAD_DIR):
             file_path = os.path.join(UPLOAD_DIR, filename)
             if os.path.isfile(file_path):
-                # Obter informações básicas do arquivo
-                file_size = os.path.getsize(file_path)
-                file_extension = os.path.splitext(filename)[1].lower()
-                
-                print(f"Documento encontrado: {filename}, Tamanho: {file_size/1024/1024:.2f}MB")
-                
-                documents.append({
-                    "file_name": filename,
-                    "file_size": file_size,
-                    "file_type": file_extension,
-                    "file_path": file_path
-                })
-    else:
-        print(f"Diretório de upload não existe: {UPLOAD_DIR}")
+                # Verificar extensão
+                _, ext = os.path.splitext(filename)
+                if ext.lower() in ['.pdf', '.docx', '.txt']:
+                    # Obter metadados básicos
+                    stat = os.stat(file_path)
+                    documents_info.append({
+                        "file_name": filename,
+                        "file_size": str(stat.st_size),
+                        "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        "file_path": file_path,
+                        "file_type": ext.lower()
+                    })
         
-    print(f"Total de documentos encontrados: {len(documents)}")
-    return documents
+        logger.info(f"Encontrados {len(documents_info)} documentos no diretório de upload")
+    except Exception as e:
+        logger.error(f"Erro ao obter informações dos documentos: {str(e)}")
+    
+    return documents_info
 
-# Função para calcular o uso total da pasta uploaded_docs
 def get_total_upload_usage() -> int:
     """
-    Retorna o uso total em bytes da pasta de uploads.
+    Calcula o uso total de armazenamento no diretório de upload.
+    
+    Returns:
+        Tamanho total em bytes
     """
-    total = 0
-    if os.path.exists(UPLOAD_DIR):
+    if not os.path.exists(UPLOAD_DIR):
+        return 0
+    
+    total_size = 0
+    
+    try:
         for filename in os.listdir(UPLOAD_DIR):
             file_path = os.path.join(UPLOAD_DIR, filename)
             if os.path.isfile(file_path):
-                total += os.path.getsize(file_path)
-    return total
+                total_size += os.path.getsize(file_path)
+        
+        logger.info(f"Uso total do diretório de upload: {total_size/1024/1024:.2f}MB")
+    except Exception as e:
+        logger.error(f"Erro ao calcular uso total: {str(e)}")
+    
+    return total_size
 
-# Função principal que será chamada pelo app.py
 def ingest_documents(file_paths: Optional[List[str]] = None) -> Dict[str, object]:
     """
-    Função principal que inicia o processo de ingestão de documentos.
+    Processa documentos e os adiciona ao banco de dados vetorial.
     
     Args:
-        file_paths: Lista opcional de caminhos para arquivos. Se None, processa todos os arquivos
-                   no diretório de uploads.
+        file_paths: Lista opcional de caminhos para os arquivos a processar.
+                    Se None, processa todos os arquivos no diretório de upload.
         
     Returns:
-        Resultado do processamento
+        Dicionário com informações sobre o processamento
     """
-    # Verificar diretório de upload
-    if not os.path.exists(UPLOAD_DIR):
-        print(f"Criando diretório de upload: {UPLOAD_DIR}")
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        
-    # Se nenhuma lista específica for fornecida, processar todos os arquivos no diretório
+    # Se não foram especificados arquivos, usar todos do diretório de upload
     if file_paths is None:
-        print("Nenhum caminho específico fornecido, processando todos os documentos...")
-        all_documents = get_processed_documents_info()
-        file_paths = [doc["file_path"] for doc in all_documents]
+        logger.info("Nenhum caminho específico fornecido, processando todos os documentos no diretório de upload")
+        if not os.path.exists(UPLOAD_DIR):
+            logger.warning(f"Diretório de upload não encontrado: {UPLOAD_DIR}")
+            return {
+                "success_count": 0,
+                "error_count": 0,
+                "message": f"Diretório de upload não encontrado: {UPLOAD_DIR}"
+            }
+        
+        # Listar todos os arquivos com extensões suportadas
+        file_paths = [
+            os.path.join(UPLOAD_DIR, f) 
+            for f in os.listdir(UPLOAD_DIR) 
+            if os.path.isfile(os.path.join(UPLOAD_DIR, f)) and 
+            os.path.splitext(f)[1].lower() in ['.pdf', '.docx', '.txt']
+        ]
+        
+        logger.info(f"Encontrados {len(file_paths)} documentos para processamento")
     else:
-        print(f"Processando {len(file_paths)} documentos específicos")
-        for path in file_paths:
-            print(f" - {os.path.basename(path)}: {os.path.getsize(path)/1024/1024:.2f}MB")
+        logger.info(f"Processando {len(file_paths)} documentos específicos")
     
-    # Processar documentos
+    # Processar os documentos
     results = process_documents(file_paths)
     
-    # Verificar o estado final
-    docs_after = get_processed_documents_info()
+    # Preparar documentos para indexação
+    all_chunks = []
     
-    # Adicionar resumo ao resultado
+    # Processar cada documento em chunks para o banco de dados vetorial
+    for doc_result in results["processed_files"]:
+        try:
+            # Dividir o texto em chunks
+            chunks = split_text_into_chunks(
+                doc_result["text"], 
+                doc_result["metadata"]
+            )
+            
+            if chunks:
+                all_chunks.extend(chunks)
+                logger.info(f"Adicionados {len(chunks)} chunks do documento '{doc_result['file_name']}'")
+            else:
+                logger.warning(f"Nenhum chunk gerado para o documento '{doc_result['file_name']}'")
+        except Exception as e:
+            logger.error(f"Erro ao processar chunks para '{doc_result['file_name']}': {str(e)}")
+            results["error_count"] += 1
+    
+    # Adicionar os documentos ao banco de dados vetorial se houver chunks
+    if all_chunks:
+        try:
+            # Usar o gerenciador de embeddings para adicionar documentos
+            success = embeddings_manager.add_documents(all_chunks)
+            if success:
+                logger.info(f"Adicionados {len(all_chunks)} chunks ao banco de dados vetorial")
+                results["vectorstore_chunks"] = len(all_chunks)
+            else:
+                logger.error("Falha ao adicionar documentos ao banco de dados vetorial")
+                results["vectorstore_error"] = "Falha ao adicionar documentos ao banco de dados vetorial"
+        except Exception as e:
+            logger.error(f"Erro ao indexar documentos: {str(e)}")
+            results["vectorstore_error"] = str(e)
+    else:
+        logger.warning("Nenhum chunk para adicionar ao banco de dados vetorial")
+        results["vectorstore_chunks"] = 0
+    
+    # Adicionar informações resumidas
     results["summary"] = f"Processados {results['success_count']} documentos com sucesso, {results['error_count']} erros."
-    results["total_docs"] = len(docs_after)
-    results["total_size"] = sum(doc["file_size"] for doc in docs_after)
+    if "vectorstore_chunks" in results:
+        results["summary"] += f" {results['vectorstore_chunks']} chunks adicionados ao banco de dados vetorial."
     
     return results 

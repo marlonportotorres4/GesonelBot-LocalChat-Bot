@@ -17,6 +17,11 @@ from gesonelbot.config.settings import VECTORSTORE_DIR, MAX_FILE_SIZE_MB, MAX_FI
 # Fixar o diretório de upload como caminho absoluto
 UPLOAD_DIR = os.path.abspath(SETTINGS_UPLOAD_DIR)
 
+# Função para atualizar informações de armazenamento (movida para o início do arquivo)
+def update_storage_info():
+    current_size, current_files = get_directory_size()
+    return f"### Estado atual do sistema\n📊 **Uso de armazenamento:** {current_size:.2f}MB de {MAX_FILE_SIZE_MB}MB\n📁 **Arquivos:** {current_files} de {MAX_FILES}"
+
 # Garantir que as pastas existam
 print(f"Diretório de upload configurado: {UPLOAD_DIR}")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -300,7 +305,7 @@ def create_interface():
                     f"📊 **Uso de armazenamento:** {current_size:.2f}MB de {MAX_FILE_SIZE_MB}MB\n"
                     f"📁 **Arquivos:** {current_files} de {MAX_FILES}"
                 )
-                refresh_btn = gr.Button("🔄 Atualizar", variant="secondary", size="sm")
+                refresh_btn = gr.Button("🔄 Atualizar", variant="secondary")
             
             with gr.Column():
                 # Componente para upload de arquivos
@@ -310,21 +315,15 @@ def create_interface():
                     file_types=["pdf", "docx", "txt", ".pdf", ".docx", ".txt"]  # Tentar diferentes formatos de especificação
                 )
                 
-                # Função para atualizar informações de armazenamento
-                def update_storage_info():
-                    current_size, current_files = get_directory_size()
-                    return f"### Estado atual do sistema\n📊 **Uso de armazenamento:** {current_size:.2f}MB de {MAX_FILE_SIZE_MB}MB\n📁 **Arquivos:** {current_files} de {MAX_FILES}"
+                # Nota sobre gerenciamento de arquivos
+                gr.Markdown("""
+                **Nota:** Para remover arquivos específicos da seleção, use o botão X 
+                no canto superior direito de cada arquivo na lista ou clique no botão X acima 
+                da lista para remover todos.
+                """)
                 
-                # Função para limpar a seleção de arquivos
-                def clear_selection():
-                    return None
-                
-                with gr.Row():
-                    clear_btn = gr.Button("🗑️ Limpar seleção", variant="secondary")
-                    upload_button = gr.Button("📤 Processar Documentos", variant="primary")
-                
-                # Conectar botão de limpar à função
-                clear_btn.click(clear_selection, inputs=[], outputs=[files_input])
+                # Botão para processamento
+                upload_button = gr.Button("📤 Processar Documentos", variant="primary")
                 
                 # Explicação sobre formatos suportados
                 gr.Markdown(f"""

@@ -4,6 +4,7 @@ pydantic>=1.10.8,<2.0.0
 
 # Processamento de documentos
 langchain>=0.0.325
+langchain-community>=0.0.13
 
 # Extração de texto
 python-docx>=0.8.11
@@ -11,6 +12,13 @@ pypdf>=3.15.1
 
 # Banco de dados vetorial
 chromadb>=0.4.18
+
+# Embeddings e modelos
+sentence-transformers>=2.2.2
+faiss-cpu>=1.7.4
+huggingface-hub>=0.19.4
+openai>=1.6.0
+tiktoken>=0.5.2
 
 # Ambiente
 python-dotenv>=1.0.0
