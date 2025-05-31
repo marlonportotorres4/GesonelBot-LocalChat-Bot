@@ -47,6 +47,16 @@ DISTANCE_METRIC = os.getenv("DISTANCE_METRIC", "cosine")  # cosine, l2, ip
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))  # Tamanho do chunk em caracteres
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 100))  # Sobreposição entre chunks
 
+# Configurações do retriever (sistema de recuperação de informações)
+RETRIEVER_TOP_K = int(os.getenv("RETRIEVER_TOP_K", 4))  # Número de documentos a recuperar
+RETRIEVER_SEARCH_TYPE = os.getenv("RETRIEVER_SEARCH_TYPE", "similarity")  # similarity, mmr, similarity_score_threshold
+RETRIEVER_SCORE_THRESHOLD = float(os.getenv("RETRIEVER_SCORE_THRESHOLD", 0.5))  # Limite de score para similaridade
+
+# Configurações de LLM para QA
+QA_PROMPT_TEMPLATE = os.getenv("QA_PROMPT_TEMPLATE", "padrao")  # Nome do template de prompt a usar
+QA_TEMPERATURE = float(os.getenv("QA_TEMPERATURE", 0.1))  # Temperatura para geração (menor = mais determinístico)
+QA_MAX_TOKENS = int(os.getenv("QA_MAX_TOKENS", 512))  # Máximo de tokens na resposta
+
 # Configurações da OpenAI (se aplicável)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
