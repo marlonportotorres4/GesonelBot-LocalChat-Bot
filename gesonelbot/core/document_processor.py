@@ -17,7 +17,7 @@ from langchain.docstore.document import Document
 
 # Importar configurações e componentes do GesonelBot
 from gesonelbot.config.settings import (
-    UPLOAD_DIR, 
+    DOCS_DIR, 
     VECTORSTORE_DIR, 
     CHUNK_SIZE, 
     CHUNK_OVERLAP
@@ -345,15 +345,15 @@ def get_processed_documents_info() -> List[Dict[str, str]]:
     Returns:
         Lista de dicionários com informações sobre os documentos
     """
-    if not os.path.exists(UPLOAD_DIR):
-        logger.warning(f"Diretório de upload não existe: {UPLOAD_DIR}")
+    if not os.path.exists(DOCS_DIR):
+        logger.warning(f"Diretório de upload não existe: {DOCS_DIR}")
         return []
     
     documents_info = []
     
     try:
-        for filename in os.listdir(UPLOAD_DIR):
-            file_path = os.path.join(UPLOAD_DIR, filename)
+        for filename in os.listdir(DOCS_DIR):
+            file_path = os.path.join(DOCS_DIR, filename)
             if os.path.isfile(file_path):
                 # Verificar extensão
                 _, ext = os.path.splitext(filename)
@@ -382,14 +382,14 @@ def get_total_upload_usage() -> int:
     Returns:
         Tamanho total em bytes
     """
-    if not os.path.exists(UPLOAD_DIR):
+    if not os.path.exists(DOCS_DIR):
         return 0
     
     total_size = 0
     
     try:
-        for filename in os.listdir(UPLOAD_DIR):
-            file_path = os.path.join(UPLOAD_DIR, filename)
+        for filename in os.listdir(DOCS_DIR):
+            file_path = os.path.join(DOCS_DIR, filename)
             if os.path.isfile(file_path):
                 total_size += os.path.getsize(file_path)
         
@@ -413,19 +413,19 @@ def ingest_documents(file_paths: Optional[List[str]] = None) -> Dict[str, object
     # Se não foram especificados arquivos, usar todos do diretório de upload
     if file_paths is None:
         logger.info("Nenhum caminho específico fornecido, processando todos os documentos no diretório de upload")
-        if not os.path.exists(UPLOAD_DIR):
-            logger.warning(f"Diretório de upload não encontrado: {UPLOAD_DIR}")
+        if not os.path.exists(DOCS_DIR):
+            logger.warning(f"Diretório de upload não encontrado: {DOCS_DIR}")
             return {
                 "success_count": 0,
                 "error_count": 0,
-                "message": f"Diretório de upload não encontrado: {UPLOAD_DIR}"
+                "message": f"Diretório de upload não encontrado: {DOCS_DIR}"
             }
         
         # Listar todos os arquivos com extensões suportadas
         file_paths = [
-            os.path.join(UPLOAD_DIR, f) 
-            for f in os.listdir(UPLOAD_DIR) 
-            if os.path.isfile(os.path.join(UPLOAD_DIR, f)) and 
+            os.path.join(DOCS_DIR, f) 
+            for f in os.listdir(DOCS_DIR) 
+            if os.path.isfile(os.path.join(DOCS_DIR, f)) and 
             os.path.splitext(f)[1].lower() in ['.pdf', '.docx', '.txt']
         ]
         

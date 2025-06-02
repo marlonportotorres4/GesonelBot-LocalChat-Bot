@@ -15,7 +15,7 @@ from langchain.docstore.document import Document
 
 from gesonelbot.config.settings import (
     VECTORSTORE_DIR, 
-    EMBEDDING_MODEL, 
+    EMBEDDINGS_MODEL,
     MODEL_TYPE
 )
 
@@ -37,10 +37,10 @@ class EmbeddingsManager:
         Inicializa o modelo de embeddings com base nas configurações.
         Suporta modelos locais (HuggingFace) e OpenAI.
         """
-        logger.info(f"Inicializando modelo de embeddings: {EMBEDDING_MODEL}")
+        logger.info(f"Inicializando modelo de embeddings: {EMBEDDINGS_MODEL}")
         
         try:
-            if EMBEDDING_MODEL == "openai" and MODEL_TYPE == "openai":
+            if EMBEDDINGS_MODEL == "openai" and MODEL_TYPE == "openai":
                 # Usando embeddings da OpenAI (requer API key)
                 self.embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
                 logger.info("Modelo de embeddings OpenAI inicializado")
@@ -48,8 +48,8 @@ class EmbeddingsManager:
                 # Modelo padrão local (melhor equilíbrio entre qualidade e velocidade)
                 model_name = "all-MiniLM-L6-v2"
                 # Se um modelo específico foi configurado, usá-lo
-                if EMBEDDING_MODEL != "local" and EMBEDDING_MODEL != "openai":
-                    model_name = EMBEDDING_MODEL
+                if EMBEDDINGS_MODEL != "local" and EMBEDDINGS_MODEL != "openai":
+                    model_name = EMBEDDINGS_MODEL
                 
                 logger.info(f"Usando modelo de embeddings local: {model_name}")
                 self.embedding_model = HuggingFaceEmbeddings(

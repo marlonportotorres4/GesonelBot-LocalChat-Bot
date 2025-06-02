@@ -9,10 +9,18 @@ import sys
 import gradio as gr
 from gesonelbot.core.document_processor import ingest_documents, get_total_upload_usage
 from gesonelbot.core.qa_engine import answer_question as qa_answer
+from gesonelbot.core.qa_engine import get_model_info, list_available_models
+from gesonelbot.core.settings_manager import settings_manager
+from gesonelbot.core.llm_manager import llm_manager
 
 # Importação explícita das configurações
-from gesonelbot.config.settings import UPLOAD_DIR as SETTINGS_UPLOAD_DIR
-from gesonelbot.config.settings import VECTORSTORE_DIR, MAX_FILE_SIZE_MB, MAX_FILES
+from gesonelbot.config.settings import DOCS_DIR as SETTINGS_UPLOAD_DIR
+from gesonelbot.config.settings import VECTORSTORE_DIR
+from gesonelbot.config.settings import MODEL_TYPE, OPENAI_API_KEY, OPENAI_MODEL
+
+# Definir configurações de limites de upload que não estão presentes no settings.py
+MAX_FILE_SIZE_MB = 20  # Tamanho máximo de arquivo em MB
+MAX_FILES = 10         # Número máximo de arquivos permitidos
 
 # Fixar o diretório de upload como caminho absoluto
 UPLOAD_DIR = os.path.abspath(SETTINGS_UPLOAD_DIR)
@@ -281,6 +289,129 @@ def answer_question(question, chat_history):
     
     return chat_history, ""
 
+def update_model_type(model_choice):
+    """
+    Atualiza o tipo de modelo com base na escolha do usuário.
+    
+    Args:
+        model_choice: Escolha do usuário ('local' ou 'openai')
+        
+    Returns:
+        str: Mensagem de status
+    """
+    try:
+        if model_choice == "Modelo Local (Offline)":
+            settings_manager.update_model_type("local")
+        elif model_choice == "OpenAI (Online)":
+            settings_manager.update_model_type("openai")
+        else:
+            return "⚠️ Opção inválida selecionada."
+        
+        # Recarregar o modelo com as novas configurações
+        llm_manager.reload_settings()
+        
+        # Obter informações atualizadas
+        model_info = get_model_info()
+        
+        if model_info.get("type") == "openai":
+            if not OPENAI_API_KEY:
+                return "⚠️ Modo OpenAI selecionado, mas nenhuma API key configurada. Por favor, adicione uma chave API."
+            return f"✅ Alterado para modo OpenAI usando modelo {model_info.get('name')}."
+        else:
+            return f"✅ Alterado para modo local usando modelo {model_info.get('name')}."
+            
+    except Exception as e:
+        return f"❌ Erro ao alterar o tipo de modelo: {str(e)}"
+
+def update_openai_key(api_key):
+    """
+    Atualiza a chave de API da OpenAI.
+    
+    Args:
+        api_key: Nova chave de API
+        
+    Returns:
+        str: Mensagem de status
+    """
+    try:
+        if not api_key or len(api_key.strip()) < 10:
+            return "⚠️ Chave de API inválida ou muito curta."
+        
+        # Atualizar a chave
+        success = settings_manager.update_openai_api_key(api_key)
+        
+        if success:
+            # Recarregar o modelo com as novas configurações
+            llm_manager.reload_settings()
+            return "✅ Chave de API OpenAI atualizada com sucesso."
+        else:
+            return "❌ Falha ao atualizar a chave de API."
+            
+    except Exception as e:
+        return f"❌ Erro ao atualizar a chave de API: {str(e)}"
+
+def update_openai_model(model_name):
+    """
+    Atualiza o modelo da OpenAI.
+    
+    Args:
+        model_name: Nome do modelo
+        
+    Returns:
+        str: Mensagem de status
+    """
+    try:
+        # Atualizar o modelo
+        success = settings_manager.update_openai_model(model_name)
+        
+        if success:
+            # Recarregar o modelo com as novas configurações
+            llm_manager.reload_settings()
+            return f"✅ Modelo OpenAI alterado para {model_name}."
+        else:
+            return "❌ Falha ao atualizar o modelo."
+            
+    except Exception as e:
+        return f"❌ Erro ao atualizar o modelo: {str(e)}"
+
+def get_model_status():
+    """
+    Obtém o status atual do modelo.
+    
+    Returns:
+        str: Informações sobre o modelo atual
+    """
+    model_info = get_model_info()
+    available_models = list_available_models()
+    
+    # Obter configurações atuais
+    current_settings = settings_manager.get_current_settings()
+    
+    status = "### Status do Modelo\n\n"
+    
+    if model_info.get("status") == "carregado":
+        status += f"**Tipo de modelo:** {model_info.get('type', 'desconhecido')}\n"
+        status += f"**Nome do modelo:** {model_info.get('name', 'desconhecido')}\n"
+        status += f"**Modo:** {model_info.get('modo', 'desconhecido')}\n"
+        status += f"**Status:** {model_info.get('status', 'desconhecido')}\n\n"
+    else:
+        status += f"**Status:** Modelo não carregado\n"
+        status += f"**Tipo configurado:** {current_settings.get('MODEL_TYPE', 'desconhecido')}\n\n"
+    
+    status += "### Modelos Disponíveis\n\n"
+    
+    for model in available_models:
+        status += f"- **{model.get('name')}** ({model.get('type')})\n"
+        if "size_mb" in model:
+            status += f"  Tamanho: {model.get('size_mb')}MB\n"
+        if "status" in model:
+            status += f"  Status: {model.get('status')}\n"
+        if "api_key_configured" in model:
+            status += f"  API Key: {'Configurada ✅' if model.get('api_key_configured') else 'Não configurada ❌'}\n"
+        status += "\n"
+    
+    return status
+
 # Interface principal do Gradio
 def create_interface():
     """
@@ -423,6 +554,123 @@ def create_interface():
             - Você pode limpar a conversa a qualquer momento
             """)
         
+        # Nova aba de Configurações
+        with gr.Tab("Configurações"):
+            # Exibir status atual do modelo
+            model_status = gr.Markdown(get_model_status())
+            refresh_model_btn = gr.Button("🔄 Atualizar Status", variant="secondary")
+            
+            gr.Markdown("### Alterar Tipo de Modelo")
+            
+            with gr.Row():
+                # Seleção de tipo de modelo
+                model_choice = gr.Radio(
+                    ["Modelo Local (Offline)", "OpenAI (Online)"],
+                    label="Escolha o tipo de modelo",
+                    value="Modelo Local (Offline)" if MODEL_TYPE == "local" else "OpenAI (Online)"
+                )
+                change_model_btn = gr.Button("Aplicar Mudança", variant="primary")
+            
+            # Output para mensagens de status
+            model_change_output = gr.Markdown("")
+            
+            # Separador para configurações da OpenAI
+            gr.Markdown("### Configurações da OpenAI (Modo Online)")
+            
+            with gr.Column():
+                # Configuração da API Key da OpenAI
+                openai_api_key = gr.Textbox(
+                    label="Chave de API da OpenAI",
+                    placeholder="sk-...",
+                    type="password",
+                    value=OPENAI_API_KEY
+                )
+                
+                update_key_btn = gr.Button("Atualizar Chave API", variant="primary")
+                key_update_output = gr.Markdown("")
+                
+                # Seleção de modelo OpenAI
+                openai_model_choice = gr.Dropdown(
+                    ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"],
+                    label="Modelo OpenAI",
+                    value=OPENAI_MODEL,
+                    info="Escolha o modelo da OpenAI a ser utilizado"
+                )
+                
+                update_model_btn = gr.Button("Atualizar Modelo", variant="primary")
+                model_update_output = gr.Markdown("")
+            
+            # Informações sobre os modelos
+            gr.Markdown("""
+            ### Informações sobre os Modelos
+            
+            **Modelo Local (Offline)**
+            - Funciona sem conexão com a internet
+            - Gratuito, sem custos de API
+            - Menor qualidade de respostas
+            - Requer download único do modelo (aprox. 700MB)
+            
+            **OpenAI (Online)**
+            - Requer conexão com a internet
+            - Requer chave de API da OpenAI
+            - Custos de uso conforme tarifas da OpenAI
+            - Melhor qualidade de respostas
+            
+            **Observação sobre modelos da OpenAI:**
+            - O modelo gpt-3.5-turbo é mais econômico mas menos capaz
+            - O modelo gpt-4 oferece respostas de melhor qualidade a um custo maior
+            """)
+            
+            # Conectar os botões às suas funções
+            change_model_btn.click(
+                update_model_type,
+                inputs=[model_choice],
+                outputs=[model_change_output]
+            )
+            
+            update_key_btn.click(
+                update_openai_key,
+                inputs=[openai_api_key],
+                outputs=[key_update_output]
+            )
+            
+            update_model_btn.click(
+                update_openai_model,
+                inputs=[openai_model_choice],
+                outputs=[model_update_output]
+            )
+            
+            # Atualizar status do modelo
+            refresh_model_btn.click(
+                get_model_status,
+                inputs=[],
+                outputs=[model_status]
+            )
+            
+            # Limpar mensagens de status após alguns segundos
+            def clear_after_delay():
+                import time
+                time.sleep(5)
+                return ""
+            
+            model_change_output.change(
+                clear_after_delay,
+                inputs=[],
+                outputs=[model_change_output]
+            )
+            
+            key_update_output.change(
+                clear_after_delay,
+                inputs=[],
+                outputs=[key_update_output]
+            )
+            
+            model_update_output.change(
+                clear_after_delay,
+                inputs=[],
+                outputs=[model_update_output]
+            )
+        
         # Explicação sobre como funciona
         with gr.Accordion("Como usar o GesonelBot", open=False):
             gr.Markdown("""
@@ -439,6 +687,12 @@ def create_interface():
                - O sistema buscará informações relevantes nos documentos e responderá
                - Seu histórico de conversas ficará visível e organizado
                - Use "Limpar Conversa" para reiniciar o chat
+               
+            3. **Configurações**:
+               - Na terceira aba, você pode alterar as configurações do sistema
+               - Escolha entre modo offline (local) ou online (OpenAI)
+               - Configure sua chave de API da OpenAI para o modo online
+               - Selecione o modelo da OpenAI desejado
             
             **Nota:** Esta é a versão inicial do GesonelBot. Funcionalidades adicionais serão implementadas em breve.
             """)

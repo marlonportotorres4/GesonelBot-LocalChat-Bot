@@ -15,9 +15,9 @@ from langchain.retrievers.document_compressors import LLMChainExtractor
 # Importar componentes do GesonelBot
 from gesonelbot.core.embeddings_manager import embeddings_manager
 from gesonelbot.config.settings import (
-    RETRIEVER_TOP_K,
+    RETRIEVER_K,
     RETRIEVER_SEARCH_TYPE,
-    RETRIEVER_SCORE_THRESHOLD,
+    RETRIEVER_THRESHOLD,
     MODEL_TYPE
 )
 
@@ -61,8 +61,8 @@ class DocumentRetriever:
             self.retriever = self.vector_store.as_retriever(
                 search_type="mmr",
                 search_kwargs={
-                    "k": RETRIEVER_TOP_K,
-                    "fetch_k": RETRIEVER_TOP_K * 2,  # Buscar mais para ter diversidade
+                    "k": RETRIEVER_K,
+                    "fetch_k": RETRIEVER_K * 2,  # Buscar mais para ter diversidade
                     "lambda_mult": 0.7  # Equilíbrio entre relevância e diversidade
                 }
             )
@@ -72,17 +72,17 @@ class DocumentRetriever:
             self.retriever = self.vector_store.as_retriever(
                 search_type="similarity_score_threshold",
                 search_kwargs={
-                    "k": RETRIEVER_TOP_K,
-                    "score_threshold": RETRIEVER_SCORE_THRESHOLD
+                    "k": RETRIEVER_K,
+                    "score_threshold": RETRIEVER_THRESHOLD
                 }
             )
-            logger.info(f"Retriever inicializado com threshold de similaridade: {RETRIEVER_SCORE_THRESHOLD}")
+            logger.info(f"Retriever inicializado com threshold de similaridade: {RETRIEVER_THRESHOLD}")
         else:
             # Busca por similaridade padrão
             self.retriever = self.vector_store.as_retriever(
-                search_kwargs={"k": RETRIEVER_TOP_K}
+                search_kwargs={"k": RETRIEVER_K}
             )
-            logger.info(f"Retriever inicializado com busca de similaridade padrão (top {RETRIEVER_TOP_K})")
+            logger.info(f"Retriever inicializado com busca de similaridade padrão (top {RETRIEVER_K})")
     
     def get_relevant_documents(self, query: str) -> List[Document]:
         """
