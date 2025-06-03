@@ -42,21 +42,14 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 SUPPORTED_EXTENSIONS = ['.txt', '.pdf', '.docx', '.md', '.csv', '.json', '.html']
 
 # Configurações do modelo de embeddings
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "all-MiniLM-L6-v2")
-EMBEDDINGS_DIMENSIONS = int(os.getenv("EMBEDDINGS_DIMENSIONS", "384"))
-EMBEDDINGS_NORMALIZE = os.getenv("EMBEDDINGS_NORMALIZE", "True").lower() in ('true', '1', 't')
+EMBEDDINGS_MODEL = "all-MiniLM-L6-v2"  # Modelo fixo para embeddings
 
 # Configurações do modelo de linguagem (LLM)
-MODEL_TYPE = os.getenv("MODEL_TYPE", "local")  # 'local' ou 'openai'
+API_PROVIDER = "together"  # Fixado em together
 
-# Configurações para API da OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-
-# Configurações para modelo local
-LOCAL_MODEL_TYPE = os.getenv("LOCAL_MODEL_TYPE", "llama")  # llama é o padrão para TinyLlama
-LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL_NAME", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
-LOCAL_MODEL_PATH = os.path.join(MODELS_DIR, LOCAL_MODEL_NAME)
+# Configurações para API da Together.ai
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "")
+TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "lgai/exaone-3-5-32b-instruct")
 
 # Configurações de geração de resposta
 QA_MAX_TOKENS = int(os.getenv("QA_MAX_TOKENS", "512"))
@@ -66,12 +59,20 @@ RETRIEVER_K = int(os.getenv("RETRIEVER_K", "4"))  # Número de documentos a sere
 RETRIEVER_THRESHOLD = float(os.getenv("RETRIEVER_THRESHOLD", "0.7"))  # Limiar de similaridade
 
 # Templates de prompts
-SYSTEM_TEMPLATE = """Você é um assistente de IA chamado {app_name}. 
-Seu objetivo é fornecer respostas precisas com base nos documentos fornecidos.
-Use apenas as informações nos documentos para responder. Se não souber a resposta, admita isso claramente.
-Seja conciso e direto, mas completo. Não invente informações."""
+SYSTEM_TEMPLATE = os.getenv("SYSTEM_TEMPLATE", """Você é um assistente de IA chamado {app_name}, especializado em responder perguntas com base em documentos.
 
-USER_TEMPLATE = """Documentos relevantes:
+INSTRUÇÕES IMPORTANTES:
+1. Use APENAS as informações contidas nos documentos fornecidos para responder às perguntas.
+2. Se a informação não estiver presente nos documentos, diga uma resposta simples e direta, por exemplo se um usuário perguntar se você sabe conjurar magia, responda: "Não sei conjurar magia, Estou aqui para responder perguntas sobre os documentos fornecidos" ou se perguntar "olá tudo bem com você?" responda: "Estou bem! E você? Estou aqui para responder perguntas sobre os documentos fornecidos".
+3. NÃO invente informações ou use seu conhecimento geral quando os documentos não contêm a resposta.
+4. Cite as fontes específicas dos documentos de onde extraiu as informações, somente dos DOCUMENTOS QUE VOCÊ EXTRAIU AS INFORMAÇÕES, não cite fontes de outros documentos caso não tenha extraído informações de outros documentos.
+5. Forneça respostas Objetivas e precisas quando os documentos contiverem as informações solicitadas.
+6. Analise cuidadosamente todo o conteúdo dos documentos antes de responder.
+""")
+
+USER_TEMPLATE = os.getenv("USER_TEMPLATE", "padrao")
+if USER_TEMPLATE == "padrao":
+    USER_TEMPLATE = """Documentos relevantes:
 {context}
 
 Pergunta: {query}
@@ -83,6 +84,16 @@ UI_SUBTITLE = os.getenv("UI_SUBTITLE", APP_DESCRIPTION)
 UI_THEME = os.getenv("UI_THEME", "light")  # light ou dark
 UI_PRIMARY_COLOR = os.getenv("UI_PRIMARY_COLOR", "#2563eb")  # Azul por padrão
 
+# Configurações de logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+ENABLE_DEBUG_LOGGING = os.getenv("ENABLE_DEBUG_LOGGING", "False").lower() in ('true', '1', 't')
+
+# Ajustar nível de logging se necessário
+if ENABLE_DEBUG_LOGGING:
+    logging.getLogger().setLevel(logging.DEBUG)
+else:
+    logging.getLogger().setLevel(getattr(logging, LOG_LEVEL))
+
 # Função para verificar se as configurações necessárias estão presentes
 def verify_config():
     """
@@ -90,13 +101,9 @@ def verify_config():
     """
     all_ok = True
     
-    # Verificar API keys se necessário
-    if MODEL_TYPE == "openai" and not OPENAI_API_KEY:
-        print("AVISO: Modelo OpenAI selecionado, mas OPENAI_API_KEY não configurada no arquivo .env")
-        all_ok = False
-        
-    if EMBEDDINGS_MODEL == "openai" and not OPENAI_API_KEY:
-        print("AVISO: Embeddings OpenAI selecionados, mas OPENAI_API_KEY não configurada no arquivo .env")
+    # Verificar API key da Together.ai
+    if not TOGETHER_API_KEY:
+        print("AVISO: Chave API da Together.ai não configurada no arquivo .env")
         all_ok = False
     
     # Verificar diretórios
@@ -108,12 +115,5 @@ def verify_config():
             except Exception as e:
                 print(f"AVISO: Não foi possível criar o diretório {dir_path}: {str(e)}")
                 all_ok = False
-    
-    # Verificar modelo local
-    if MODEL_TYPE in ["local", "ctransformers", "llama_cpp", "transformers"]:
-        if not os.path.exists(LOCAL_MODEL_PATH):
-            print(f"AVISO: Modelo local selecionado, mas arquivo não encontrado: {LOCAL_MODEL_PATH}")
-            print(f"Você pode baixar um modelo compatível em: {LOCAL_MODEL_PATH}")
-            all_ok = False
     
     return all_ok 

@@ -2,21 +2,20 @@
 Gerenciador de Embeddings
 
 Este módulo gerencia a geração e armazenamento de embeddings para os documentos processados.
-Suporta diferentes modelos de embeddings e se integra com o banco de dados vetorial.
+Suporta embeddings da Hugging Face e se integra com o banco de dados vetorial.
 """
 import os
 from typing import List, Dict, Any, Optional, Union
 import logging
 
-from langchain.embeddings import HuggingFaceEmbeddings, OpenAIEmbeddings
+from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.embeddings.base import Embeddings
 from langchain.vectorstores import Chroma
 from langchain.docstore.document import Document
 
 from gesonelbot.config.settings import (
     VECTORSTORE_DIR, 
-    EMBEDDINGS_MODEL,
-    MODEL_TYPE
+    EMBEDDINGS_MODEL
 )
 
 # Configurar logging
@@ -35,38 +34,42 @@ class EmbeddingsManager:
     def _initialize_embedding_model(self) -> None:
         """
         Inicializa o modelo de embeddings com base nas configurações.
-        Suporta modelos locais (HuggingFace) e OpenAI.
+        Usa o modelo definido em settings.py para embeddings online via Hugging Face.
         """
-        logger.info(f"Inicializando modelo de embeddings: {EMBEDDINGS_MODEL}")
+        logger.info(f"Inicializando modelo de embeddings online: {EMBEDDINGS_MODEL}")
         
         try:
-            if EMBEDDINGS_MODEL == "openai" and MODEL_TYPE == "openai":
-                # Usando embeddings da OpenAI (requer API key)
-                self.embedding_model = OpenAIEmbeddings(model="text-embedding-3-small")
-                logger.info("Modelo de embeddings OpenAI inicializado")
-            else:
-                # Modelo padrão local (melhor equilíbrio entre qualidade e velocidade)
-                model_name = "all-MiniLM-L6-v2"
-                # Se um modelo específico foi configurado, usá-lo
-                if EMBEDDINGS_MODEL != "local" and EMBEDDINGS_MODEL != "openai":
-                    model_name = EMBEDDINGS_MODEL
-                
-                logger.info(f"Usando modelo de embeddings local: {model_name}")
-                self.embedding_model = HuggingFaceEmbeddings(
-                    model_name=model_name,
-                    model_kwargs={'device': 'cpu'},
-                    encode_kwargs={'normalize_embeddings': True}
-                )
-                logger.info("Modelo de embeddings local inicializado")
-        except Exception as e:
-            logger.error(f"Erro ao inicializar modelo de embeddings: {str(e)}")
-            # Fallback para modelo simples local em caso de erro
+            # Verificar se há pastas de modelos locais que podem estar causando conflitos
+            models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "models")
+            if os.path.exists(models_dir) and os.listdir(models_dir):
+                model_files = [f for f in os.listdir(models_dir) if not f.startswith('.')]
+                if model_files:
+                    logger.warning(f"Encontrados arquivos de modelo local que podem causar conflitos: {model_files}")
+                    logger.warning("A aplicação está configurada para usar APENAS modelos online.")
+            
             self.embedding_model = HuggingFaceEmbeddings(
-                model_name="all-MiniLM-L6-v2",
+                model_name=EMBEDDINGS_MODEL,
                 model_kwargs={'device': 'cpu'},
                 encode_kwargs={'normalize_embeddings': True}
             )
-            logger.warning("Usando modelo de embeddings de fallback devido a erro")
+            logger.info(f"Modelo de embeddings Hugging Face inicializado: {EMBEDDINGS_MODEL}")
+        except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"Erro ao inicializar modelo de embeddings: {str(e)}")
+            logger.error(f"Traceback: {error_traceback}")
+            
+            # Tentar novamente com configurações básicas em caso de erro
+            try:
+                logger.warning("Tentando inicializar com configurações básicas devido a erro")
+                self.embedding_model = HuggingFaceEmbeddings(
+                    model_name=EMBEDDINGS_MODEL,
+                    model_kwargs={'device': 'cpu'}
+                )
+                logger.warning("Usando modelo de embeddings com configurações básicas devido a erro")
+            except Exception as e2:
+                logger.error(f"Segundo erro ao inicializar embeddings: {str(e2)}")
+                logger.error(f"A aplicação pode não funcionar corretamente sem embeddings.")
     
     def get_embedding_model(self) -> Embeddings:
         """

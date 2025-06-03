@@ -17,8 +17,7 @@ from gesonelbot.core.embeddings_manager import embeddings_manager
 from gesonelbot.config.settings import (
     RETRIEVER_K,
     RETRIEVER_SEARCH_TYPE,
-    RETRIEVER_THRESHOLD,
-    MODEL_TYPE
+    RETRIEVER_THRESHOLD
 )
 
 # Configurar logging

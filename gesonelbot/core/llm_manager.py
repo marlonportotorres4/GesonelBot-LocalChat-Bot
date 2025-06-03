@@ -1,29 +1,21 @@
 """
 Gerenciador de Modelos de Linguagem (LLM)
 
-Este módulo gerencia diferentes modelos de linguagem para geração de respostas,
-suportando modelo local (offline) ou API da OpenAI (online).
+Este módulo gerencia o modelo de linguagem para geração de respostas,
+utilizando a API da Together.ai com o modelo lgai/exaone-3-5-32b-instruct.
 """
 import os
 import logging
+import json
 from typing import Dict, Any, Optional, Union, List
-
-# Importações condicionais para evitar dependências obrigatórias
-# Serão importadas apenas quando o modelo específico for solicitado
-llm_imports_successful = {
-    "openai": False,
-    "ctransformers": False
-}
 
 # Configurações
 from gesonelbot.config.settings import (
-    MODEL_TYPE,
-    OPENAI_API_KEY,
-    OPENAI_MODEL,
-    LOCAL_MODEL_PATH,
-    LOCAL_MODEL_TYPE,
+    TOGETHER_API_KEY,
+    TOGETHER_MODEL,
     QA_TEMPERATURE,
-    QA_MAX_TOKENS
+    QA_MAX_TOKENS,
+    SYSTEM_TEMPLATE
 )
 
 # Configurar logging
@@ -31,106 +23,62 @@ logger = logging.getLogger(__name__)
 
 class LLMManager:
     """
-    Gerencia modelos de linguagem para geração de texto.
+    Gerencia o modelo de linguagem para geração de texto.
     
-    Esta classe oferece uma interface unificada para dois tipos de modelos:
-    - Modelo local (usando CTransformers) para uso offline
-    - Modelo da OpenAI (via API) para melhor qualidade quando online
+    Esta classe oferece uma interface para modelos de linguagem
+    através da API da Together.ai.
     
     O modelo é carregado sob demanda para economizar recursos.
     """
     
     def __init__(self):
         """Inicializa o gerenciador de modelos."""
-        self.model_type = MODEL_TYPE  # 'local' ou 'openai'
+        self.model_type = "together"
         self.current_model = None
         self.model_info = {}
         
         # Verificar configurações iniciais
-        logger.info(f"Inicializando LLM Manager com tipo de modelo: {self.model_type}")
-        
-        # Verificar se as pastas necessárias existem
-        if self.model_type == "local" and not os.path.exists(LOCAL_MODEL_PATH):
-            logger.warning(f"Caminho do modelo local não encontrado: {LOCAL_MODEL_PATH}")
-            if os.path.dirname(LOCAL_MODEL_PATH):
-                os.makedirs(os.path.dirname(LOCAL_MODEL_PATH), exist_ok=True)
-                logger.info(f"Diretório para modelos locais criado: {os.path.dirname(LOCAL_MODEL_PATH)}")
+        logger.info(f"Inicializando LLM Manager com Together.ai - modelo: {TOGETHER_MODEL}")
     
-    def _load_openai_model(self) -> bool:
+    def _load_together_model(self) -> bool:
         """
-        Carrega o modelo da OpenAI.
+        Configura o acesso ao modelo da Together.ai.
         
         Returns:
-            bool: True se o modelo foi carregado com sucesso
+            bool: True se a configuração foi bem-sucedida
         """
         try:
-            # Importar apenas quando necessário
-            from openai import OpenAI
-            llm_imports_successful["openai"] = True
-            
-            if not OPENAI_API_KEY:
-                logger.error("Chave da API OpenAI não configurada. Verifique seu arquivo .env")
+            if not TOGETHER_API_KEY:
+                logger.error("Chave API da Together.ai não configurada. Verifique seu arquivo .env")
                 return False
             
-            # Criar cliente OpenAI
-            self.current_model = OpenAI(api_key=OPENAI_API_KEY)
+            # Importar a biblioteca Together
+            try:
+                from together import Together
+                logger.info("Biblioteca Together importada com sucesso")
+            except ImportError:
+                logger.error("Biblioteca Together não instalada. Execute 'pip install together'")
+                return False
+            
+            # Inicializar o cliente Together
+            self.current_model = Together(api_key=TOGETHER_API_KEY)
+            
+            # Atualizar informações do modelo
             self.model_info = {
-                "type": "openai",
-                "name": OPENAI_MODEL,
+                "type": "together",
+                "name": TOGETHER_MODEL,
                 "max_tokens": QA_MAX_TOKENS,
                 "temperature": QA_TEMPERATURE,
                 "modo": "online"
             }
             
-            logger.info(f"Modelo OpenAI inicializado: {OPENAI_MODEL}")
+            logger.info(f"API Together.ai configurada para modelo: {TOGETHER_MODEL}")
             return True
-        except ImportError:
-            logger.error("Biblioteca OpenAI não instalada. Execute 'pip install openai'")
-            return False
         except Exception as e:
-            logger.error(f"Erro ao inicializar modelo OpenAI: {str(e)}")
-            return False
-    
-    def _load_local_model(self) -> bool:
-        """
-        Carrega um modelo local usando CTransformers (para modelos GGUF).
-        
-        Returns:
-            bool: True se o modelo foi carregado com sucesso
-        """
-        try:
-            # Importar apenas quando necessário
-            from ctransformers import AutoModelForCausalLM
-            llm_imports_successful["ctransformers"] = True
-            
-            if not os.path.exists(LOCAL_MODEL_PATH):
-                logger.error(f"Arquivo de modelo não encontrado: {LOCAL_MODEL_PATH}")
-                logger.error("Execute o setup.bat para baixar o modelo.")
-                return False
-            
-            # Carregar o modelo
-            self.current_model = AutoModelForCausalLM.from_pretrained(
-                LOCAL_MODEL_PATH,
-                model_type=LOCAL_MODEL_TYPE or "llama",  # llama é o padrão para TinyLlama
-                max_new_tokens=QA_MAX_TOKENS,
-                temperature=QA_TEMPERATURE
-            )
-            
-            self.model_info = {
-                "type": "local",
-                "name": os.path.basename(LOCAL_MODEL_PATH),
-                "max_tokens": QA_MAX_TOKENS,
-                "temperature": QA_TEMPERATURE,
-                "modo": "offline"
-            }
-            
-            logger.info(f"Modelo local inicializado: {os.path.basename(LOCAL_MODEL_PATH)}")
-            return True
-        except ImportError:
-            logger.error("Biblioteca CTransformers não instalada. Execute 'pip install ctransformers'")
-            return False
-        except Exception as e:
-            logger.error(f"Erro ao inicializar modelo local: {str(e)}")
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"Erro ao configurar API Together.ai: {str(e)}")
+            logger.error(f"Traceback: {error_traceback}")
             return False
     
     def reload_settings(self):
@@ -147,56 +95,27 @@ class LLMManager:
         
         # Atualizar variáveis locais
         from gesonelbot.config.settings import (
-            MODEL_TYPE, OPENAI_API_KEY, OPENAI_MODEL, 
-            LOCAL_MODEL_PATH, LOCAL_MODEL_TYPE
+            TOGETHER_API_KEY, TOGETHER_MODEL
         )
         
-        # Verificar se o tipo de modelo mudou
-        if MODEL_TYPE != self.model_type:
-            logger.info(f"Tipo de modelo alterado de {self.model_type} para {MODEL_TYPE}")
-            self.model_type = MODEL_TYPE
-            
-            # Descarregar o modelo atual
-            self.current_model = None
-            self.model_info = {}
-            
-            # Carregar o novo modelo
-            self.load_model()
-        
-        # Verificar se outras configurações importantes mudaram
-        if self.current_model and self.model_info.get("type") == "openai":
-            # Recarregar modelo OpenAI se a API key ou o modelo mudou
+        # Verificar se configurações importantes mudaram
+        if self.current_model:
+            # Recarregar modelo se o modelo mudou
             current_model_name = self.model_info.get("name")
-            if current_model_name != OPENAI_MODEL:
-                logger.info(f"Modelo OpenAI alterado de {current_model_name} para {OPENAI_MODEL}")
+            if current_model_name != TOGETHER_MODEL:
+                logger.info(f"Modelo Together.ai alterado de {current_model_name} para {TOGETHER_MODEL}")
                 self.current_model = None
                 self.load_model()
     
-    def load_model(self, model_type: Optional[str] = None) -> bool:
+    def load_model(self) -> bool:
         """
-        Carrega o modelo especificado.
-        
-        Args:
-            model_type: Tipo de modelo a carregar ('openai' ou 'local')
-                        Se None, usa o tipo configurado em settings.py
+        Carrega o modelo Together.ai.
         
         Returns:
             bool: True se o modelo foi carregado com sucesso
         """
-        # Se model_type não for especificado, usar o configurado
-        model_type = model_type or self.model_type
-        
-        logger.info(f"Carregando modelo do tipo: {model_type}")
-        
-        # Carregar o modelo apropriado
-        if model_type == "openai":
-            return self._load_openai_model()
-        elif model_type == "local":
-            return self._load_local_model()
-        else:
-            logger.error(f"Tipo de modelo não suportado: {model_type}")
-            logger.info("Tentando usar modelo local como fallback...")
-            return self._load_local_model()
+        logger.info(f"Carregando modelo Together.ai: {TOGETHER_MODEL}")
+        return self._load_together_model()
     
     def generate_response(self, prompt: str, **kwargs) -> str:
         """
@@ -214,49 +133,74 @@ class LLMManager:
             logger.info("Modelo não carregado. Carregando modelo...")
             success = self.load_model()
             
-            # Tentar usar modelo alternativo se o primeiro falhar
-            if not success and self.model_type == "openai":
-                logger.info("Modelo OpenAI falhou. Tentando modelo local como fallback...")
-                success = self.load_model("local")
-            
             if not success:
-                return "Erro: Não foi possível carregar nenhum modelo. Verifique se o modelo local está baixado ou se a API da OpenAI está configurada."
+                return "Erro: Não foi possível carregar o modelo. Verifique se a API key da Together.ai está configurada."
         
-        # Gerar resposta com base no tipo de modelo
+        # Gerar resposta
         try:
-            model_type = self.model_info.get("type", "unknown")
+            # Parâmetros para a API
+            temperature = kwargs.get("temperature", QA_TEMPERATURE)
+            max_tokens = kwargs.get("max_tokens", QA_MAX_TOKENS)
             
-            if model_type == "openai":
-                # Parâmetros para a API da OpenAI
-                temperature = kwargs.get("temperature", QA_TEMPERATURE)
-                max_tokens = kwargs.get("max_tokens", QA_MAX_TOKENS)
-                
+            # Usar o sistema prompt personalizado se fornecido, caso contrário usar o padrão
+            system_prompt = kwargs.get("system_prompt", SYSTEM_TEMPLATE.format(app_name="GesonelBot"))
+            
+            # Melhorar o formato do prompt
+            formatted_prompt = f"""
+Por favor, analise os documentos fornecidos e responda à pergunta com base apenas nas informações contidas neles.
+
+{prompt}
+"""
+            
+            # Criar mensagens no formato adequado para o modelo
+            messages = [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": formatted_prompt
+                }
+            ]
+            
+            logger.info(f"Enviando prompt para modelo Together.ai: {TOGETHER_MODEL}")
+            logger.info(f"Parâmetros da chamada: temperatura={temperature}, max_tokens={max_tokens}")
+            logger.debug(f"Prompt completo: {formatted_prompt[:500]}...")
+            
+            try:
+                # Chamar a API da Together.ai
                 response = self.current_model.chat.completions.create(
-                    model=OPENAI_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
+                    model=TOGETHER_MODEL,
+                    messages=messages,
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    top_p=0.9
                 )
                 
-                return response.choices[0].message.content
+                logger.info("Resposta recebida do modelo Together.ai")
                 
-            elif model_type == "local":
-                # Parâmetros para o modelo local
-                temperature = kwargs.get("temperature", QA_TEMPERATURE)
-                max_tokens = kwargs.get("max_tokens", QA_MAX_TOKENS)
+                # Extrair a resposta
+                if hasattr(response, 'choices') and len(response.choices) > 0:
+                    if hasattr(response.choices[0], 'message') and hasattr(response.choices[0].message, 'content'):
+                        return response.choices[0].message.content
                 
-                return self.current_model(
-                    prompt,
-                    temperature=temperature,
-                    max_new_tokens=max_tokens
-                )
+                # Fallback se a estrutura não for a esperada
+                logger.warning("Formato de resposta inesperado, tentando extrair conteúdo")
+                return str(response)
                 
-            else:
-                logger.error(f"Tipo de modelo não suportado para geração: {model_type}")
-                return f"Erro: Tipo de modelo não suportado: {model_type}"
+            except Exception as e:
+                import traceback
+                error_traceback = traceback.format_exc()
+                logger.error(f"Erro na chamada da API Together.ai: {str(e)}")
+                logger.error(f"Traceback: {error_traceback}")
+                return f"Erro ao gerar resposta: {str(e)}"
                 
         except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
             logger.error(f"Erro ao gerar resposta: {str(e)}")
+            logger.error(f"Traceback: {error_traceback}")
             return f"Erro ao gerar resposta: {str(e)}"
     
     def get_model_info(self) -> Dict[str, Any]:
@@ -267,7 +211,7 @@ class LLMManager:
             Dict[str, Any]: Informações sobre o modelo
         """
         if not self.current_model:
-            return {"status": "não carregado", "type": self.model_type}
+            return {"status": "não carregado", "type": self.model_type, "name": TOGETHER_MODEL}
         
         return {
             "status": "carregado",
@@ -283,35 +227,19 @@ class LLMManager:
         """
         models = []
         
-        # Verificar modelo local
-        if os.path.exists(LOCAL_MODEL_PATH):
+        # Verificar modelo Together.ai
+        if TOGETHER_API_KEY:
             models.append({
-                "name": os.path.basename(LOCAL_MODEL_PATH),
-                "path": LOCAL_MODEL_PATH,
-                "type": "local",
-                "size_mb": round(os.path.getsize(LOCAL_MODEL_PATH) / (1024 * 1024), 1),
-                "modo": "offline"
-            })
-        else:
-            models.append({
-                "name": "Modelo local não encontrado",
-                "type": "local",
-                "status": "indisponível - arquivo não encontrado",
-                "modo": "offline"
-            })
-        
-        # Verificar modelo OpenAI
-        if OPENAI_API_KEY:
-            models.append({
-                "name": OPENAI_MODEL,
-                "type": "openai",
+                "name": TOGETHER_MODEL,
+                "type": "together",
                 "api_key_configured": True,
-                "modo": "online"
+                "modo": "online",
+                "status": "ativo"
             })
         else:
             models.append({
-                "name": OPENAI_MODEL,
-                "type": "openai",
+                "name": TOGETHER_MODEL,
+                "type": "together",
                 "api_key_configured": False,
                 "status": "indisponível - API key não configurada",
                 "modo": "online"

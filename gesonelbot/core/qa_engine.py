@@ -15,52 +15,52 @@ from gesonelbot.core.llm_manager import llm_manager
 from gesonelbot.config.settings import (
     USER_TEMPLATE as QA_PROMPT_TEMPLATE,
     QA_TEMPERATURE,
-    QA_MAX_TOKENS,
-    SYSTEM_TEMPLATE as QA_SYSTEM_PROMPT,
-    MODEL_TYPE
+    QA_MAX_TOKENS
 )
 
 # Configurar logging
 logger = logging.getLogger(__name__)
 
+# Sistema prompt personalizado para o chatbot
+SYSTEM_PROMPT = """
+Você é um assistente de IA especializado em responder perguntas com base em documentos.
+
+INSTRUÇÕES IMPORTANTES:
+1. Use APENAS as informações contidas nos documentos fornecidos para responder às perguntas.
+2. Se a informação não estiver presente nos documentos, diga uma resposta simples e direta, por exemplo se um usuário perguntar se você sabe conjurar magia, responda: "Não sei conjurar magia, Estou aqui para responder perguntas sobre os documentos fornecidos" ou se perguntar "olá tudo bem com você?" responda: "Estou bem! E você? Estou aqui para responder perguntas sobre os documentos fornecidos".
+3. NÃO invente informações ou use seu conhecimento geral quando os documentos não contêm a resposta.
+4. Cite as fontes específicas dos documentos de onde extraiu as informações, somente dos DOCUMENTOS QUE VOCÊ EXTRAIU AS INFORMAÇÕES, não cite fontes de outros documentos caso não tenha extraído informações de outros documentos.
+5. Forneça respostas Objetivas e precisas quando os documentos contiverem as informações solicitadas.
+6. Analise cuidadosamente todo o conteúdo dos documentos antes de responder.
+"""
+
 # Template de prompt padrão para QA
 PROMPT_TEMPLATES = {
     "padrao": """
-{system_prompt}
+Use apenas as informações fornecidas nos documentos abaixo para responder à pergunta.
+Se a informação não estiver presente nos documentos, diga que não tem informações suficientes para responder.
+Não invente ou suponha informações que não estejam explicitamente nos documentos.
+Cite as fontes dos documentos de onde você extraiu as informações.
 
-Use apenas as informações fornecidas nos contextos abaixo para responder à pergunta.
-Se a informação não estiver presente nos contextos, diga que não tem informações suficientes para responder.
-Não invente ou suponha informações que não estejam explicitamente nos contextos.
-Cite as fontes dos documentos de onde você extraiu as informações, usando os nomes dos arquivos fornecidos.
-
-Contextos:
+Documentos:
 {contexts}
 
 Pergunta: {question}
-
-Resposta:
 """,
     "conciso": """
-{system_prompt}
-
-Responda à pergunta de forma concisa usando apenas os contextos fornecidos.
-Contextos: {contexts}
+Responda à pergunta de forma concisa usando apenas os documentos fornecidos.
+Documentos: {contexts}
 Pergunta: {question}
-Resposta (cite as fontes):
 """,
     "academico": """
-{system_prompt}
-
 Você é um assistente acadêmico respondendo a uma pergunta com base em documentos fornecidos.
 Use um tom formal e estruturado, citando apropriadamente as fontes.
 Organize sua resposta em parágrafos lógicos e inclua uma conclusão.
 
-Contextos disponíveis:
+Documentos disponíveis:
 {contexts}
 
 Pergunta: {question}
-
-Resposta acadêmica:
 """
 }
 
@@ -117,32 +117,45 @@ def answer_question(question: str, top_k: int = None) -> Dict[str, Any]:
         sources = []
         
         for i, doc in enumerate(retrieved_docs):
-            # Formatar o contexto
-            context = f"[Documento {i+1}] {doc['content']}"
-            contexts.append(context)
+            # Extrair informações do documento
+            file_name = doc.get("file_name", f"Documento {i+1}")
+            source = doc.get("source", f"Fonte {i+1}")
+            content = doc.get("content", "").strip()
+            
+            # Formatar o conteúdo do documento de forma clara
+            formatted_content = f"""DOCUMENTO {i+1}: {file_name}
+{content}
+"""
+            contexts.append(formatted_content)
             
             # Coletar informações da fonte
             source_info = {
-                "file_name": doc["file_name"],
-                "source": doc["source"] if "source" in doc else f"Documento {i+1}"
+                "file_name": file_name,
+                "source": source
             }
             sources.append(source_info)
+        
+        # Juntar todos os contextos com separadores claros
+        all_contexts = "\n\n" + "\n\n".join(contexts)
         
         # Selecionar o template de prompt
         prompt_template = PROMPT_TEMPLATES.get(QA_PROMPT_TEMPLATE, PROMPT_TEMPLATES["padrao"])
         
         # Formatar o prompt com os contextos e a pergunta
         prompt = prompt_template.format(
-            system_prompt=QA_SYSTEM_PROMPT,
-            contexts="\n\n".join(contexts),
+            contexts=all_contexts,
             question=question
         )
         
-        # Gerar a resposta usando o LLM Manager
+        # Log do prompt para debug
+        logger.debug(f"Prompt completo: {prompt[:500]}...")
+        
+        # Gerar a resposta usando o LLM Manager com o sistema prompt personalizado
         answer = llm_manager.generate_response(
             prompt,
             temperature=QA_TEMPERATURE,
-            max_tokens=QA_MAX_TOKENS
+            max_tokens=QA_MAX_TOKENS,
+            system_prompt=SYSTEM_PROMPT
         )
         
         # Calcular tempo de processamento
@@ -165,6 +178,8 @@ def answer_question(question: str, top_k: int = None) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Erro ao responder pergunta: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         processing_time_ms = int((time.time() - start_time) * 1000)
         return {
             "question": question,

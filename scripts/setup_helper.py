@@ -1,13 +1,10 @@
 import os
 import sys
-import requests
 import subprocess
 import importlib.util
 from tqdm import tqdm
 
 # Constantes
-MODEL_URL = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-MODEL_DEST = os.path.join("data", "models", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
 ENV_FILE = ".env"
 REQUIREMENTS_FILE = "requirements.txt"
 
@@ -64,7 +61,7 @@ def install_all_deps():
 # Verificar dependências críticas para execução
 def check_critical_deps():
     print("Verificando dependências críticas...")
-    packages = ['python-dotenv', 'openai', 'ctransformers', 'gradio']
+    packages = ['python-dotenv', 'together', 'gradio', 'langchain']
     missing = []
     
     for package in packages:
@@ -104,71 +101,37 @@ def create_env_file():
     if not os.path.exists(ENV_FILE):
         print("Criando arquivo de configuração .env...")
         with open(ENV_FILE, "w") as f:
-            f.write("# Configuracoes do GesonelBot\n")
-            f.write("MODEL_TYPE=local\n")
-            f.write("LOCAL_MODEL_NAME=tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf\n")
-            f.write("# Para usar OpenAI, adicione sua chave API abaixo e mude MODEL_TYPE para 'openai'\n")
-            f.write("# OPENAI_API_KEY=sua_chave_aqui\n")
-            f.write("# OPENAI_MODEL=gpt-3.5-turbo\n")
+            f.write("# Configurações do GesonelBot\n")
+            f.write("# API Provider\n")
+            f.write("API_PROVIDER=together\n\n")
+            f.write("# Chave API da Together.ai\n")
+            f.write("TOGETHER_API_KEY=\n")
+            f.write("TOGETHER_MODEL=lgai/exaone-3-5-32b-instruct\n\n")
     return True
 
-# Baixar modelo se não existir
-def download_model():
-    if os.path.exists(MODEL_DEST):
-        print(f"\nModelo local já existe em: {MODEL_DEST}")
-        print("Modelo encontrado, pulando download.")
-        return True
-    
+# Verificar configuração da API
+def check_api_config():
     print("\n============================================")
-    print("Baixando modelo local (necessário para modo offline)...")
+    print("Verificando configuração da API...")
     print("============================================")
     
-    print(f"Baixando modelo de {MODEL_URL}")
-    print(f"Destino: {MODEL_DEST}")
-    print("Tamanho aproximado: 700MB")
-    print("Este processo pode demorar alguns minutos...\n")
-    
     try:
-        response = requests.get(MODEL_URL, stream=True)
-        total_size = int(response.headers.get('content-length', 0))
-        block_size = 8192
+        import dotenv
+        dotenv.load_dotenv(ENV_FILE)
         
-        with open(MODEL_DEST, 'wb') as f:
-            progress_bar = tqdm(total=total_size, unit='B', unit_scale=True)
-            for chunk in response.iter_content(block_size):
-                if chunk:
-                    f.write(chunk)
-                    progress_bar.update(len(chunk))
-            progress_bar.close()
+        together_api_key = os.getenv("TOGETHER_API_KEY")
         
-        if os.path.exists(MODEL_DEST):
-            print("\nModelo baixado com sucesso!")
-            return True
-        else:
-            print("\nERRO: Falha ao baixar o modelo.")
+        if not together_api_key:
+            print("\nAVISO: Chave API da Together.ai não configurada!")
+            print("Por favor, edite o arquivo .env e adicione sua chave TOGETHER_API_KEY.")
+            print("Você pode obter uma chave em: https://api.together.xyz/settings/api-keys")
             return False
+        else:
+            print("\nChave API da Together.ai encontrada!")
+            return True
     except Exception as e:
-        print(f"\nERRO ao baixar o modelo: {str(e)}")
+        print(f"\nERRO ao verificar configuração da API: {str(e)}")
         return False
-
-# Verificar se o modelo local é necessário e está disponível
-def check_model_availability():
-    # Aqui tentamos importar as configurações, mas se falhar (por exemplo, na primeira execução)
-    # assumimos que o modelo local será necessário
-    try:
-        sys.path.append(os.getcwd())
-        from gesonelbot.config.settings import MODEL_TYPE, LOCAL_MODEL_PATH
-        if MODEL_TYPE == 'local':
-            if not os.path.exists(LOCAL_MODEL_PATH):
-                print("Modelo local configurado, mas arquivo não encontrado.")
-                return download_model()
-    except (ImportError, ModuleNotFoundError):
-        # Se não conseguimos importar as configurações, verificamos se o modelo padrão existe
-        if not os.path.exists(MODEL_DEST):
-            print("Configurações não encontradas, verificando modelo padrão.")
-            return download_model()
-    
-    return True
 
 # Configuração inicial completa (usado pelo script setup.bat)
 def setup():
@@ -187,20 +150,18 @@ def setup():
     if not create_env_file():
         return False
     
-    if not download_model():
-        print("AVISO: Modelo não foi baixado, mas a configuração continuará.")
-    
     if not install_all_deps():
         print("AVISO: Algumas dependências podem não ter sido instaladas.")
+    
+    if not check_api_config():
+        print("AVISO: Configuração da API incompleta.")
     
     print("\n============================================")
     print("Configuração concluída com sucesso!")
     print("\nPara usar o GesonelBot:")
-    print("1. Execute scripts\\run.bat para iniciar o chatbot")
-    print("2. Adicione seus documentos na pasta data\\docs")
-    print("\nPara alternar entre modos online/offline:")
-    print("- Edite o arquivo .env e altere MODEL_TYPE entre \"local\" e \"openai\"")
-    print("- Ou use a aba Configurações na interface do GesonelBot")
+    print("1. Certifique-se de que sua chave API está configurada no arquivo .env")
+    print("2. Execute gesonelbot.py para iniciar o chatbot")
+    print("3. Adicione seus documentos na pasta data\\docs")
     print("============================================")
     
     return True
@@ -213,8 +174,8 @@ def prepare_for_run():
     if not check_critical_deps():
         success = False
     
-    # Verificar disponibilidade do modelo
-    if not check_model_availability():
+    # Verificar configuração da API
+    if not check_api_config():
         success = False
     
     return success
@@ -225,8 +186,6 @@ def main():
             return setup()
         elif sys.argv[1] == "prepare":
             return prepare_for_run()
-        elif sys.argv[1] == "download":
-            return download_model()
     else:
         # Comportamento padrão (executado quando chamado sem argumentos)
         return setup()

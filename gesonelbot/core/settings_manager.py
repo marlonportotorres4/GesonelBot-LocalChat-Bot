@@ -2,7 +2,7 @@
 Gerenciador de configurações em tempo de execução
 
 Este módulo permite alterar configurações do sistema sem reiniciar a aplicação,
-como alternar entre modos de modelo e atualizar chaves de API.
+como atualizar as chaves de API e configurações dos provedores.
 """
 import os
 import logging
@@ -12,11 +12,9 @@ from typing import Dict, Any, Optional
 
 # Importar configurações atuais
 from gesonelbot.config.settings import (
-    MODEL_TYPE,
-    OPENAI_API_KEY,
-    OPENAI_MODEL,
-    LOCAL_MODEL_PATH,
-    LOCAL_MODEL_TYPE
+    API_PROVIDER,
+    TOGETHER_API_KEY,
+    TOGETHER_MODEL
 )
 
 # Configurar logging
@@ -39,47 +37,45 @@ class SettingsManager:
         
         # Configurações atuais
         self.current_settings = {
-            "MODEL_TYPE": MODEL_TYPE,
-            "OPENAI_API_KEY": OPENAI_API_KEY,
-            "OPENAI_MODEL": OPENAI_MODEL,
-            "LOCAL_MODEL_PATH": LOCAL_MODEL_PATH,
-            "LOCAL_MODEL_TYPE": LOCAL_MODEL_TYPE
+            "API_PROVIDER": API_PROVIDER,
+            "TOGETHER_API_KEY": TOGETHER_API_KEY,
+            "TOGETHER_MODEL": TOGETHER_MODEL
         }
     
-    def update_model_type(self, model_type: str) -> bool:
+    def update_api_provider(self, provider: str) -> bool:
         """
-        Altera o tipo de modelo utilizado (local ou openai).
+        Atualiza o provedor de API utilizado.
         
         Args:
-            model_type: Tipo de modelo ('local' ou 'openai')
+            provider: Provedor de API (apenas 'together' é suportado)
             
         Returns:
             bool: True se a alteração foi bem-sucedida
         """
-        if model_type not in ['local', 'openai']:
-            logger.error(f"Tipo de modelo inválido: {model_type}. Use 'local' ou 'openai'.")
+        if provider != 'together':
+            logger.error(f"Provedor de API inválido: {provider}. Opção válida: 'together'")
             return False
         
-        # Verificar se tem API key configurada quando alterando para OpenAI
-        if model_type == 'openai' and not self.current_settings['OPENAI_API_KEY']:
-            logger.warning("Alterando para modelo OpenAI sem API key configurada. Configure a API key primeiro.")
+        # Verificar se tem API key configurada para o provedor selecionado
+        if not self.current_settings['TOGETHER_API_KEY']:
+            logger.warning("A chave API da Together.ai não está configurada. Configure a chave primeiro.")
         
         # Atualizar configuração
-        self.current_settings['MODEL_TYPE'] = model_type
+        self.current_settings['API_PROVIDER'] = provider
         
         # Salvar no arquivo .env
-        self._save_to_env("MODEL_TYPE", model_type)
+        self._save_to_env("API_PROVIDER", provider)
         
         # Atualizar valor global (usado pelo sistema)
         import gesonelbot.config.settings
-        gesonelbot.config.settings.MODEL_TYPE = model_type
+        gesonelbot.config.settings.API_PROVIDER = provider
         
-        logger.info(f"Tipo de modelo alterado para: {model_type}")
+        logger.info(f"Provedor de API atualizado para: {provider}")
         return True
     
-    def update_openai_api_key(self, api_key: str) -> bool:
+    def update_together_api_key(self, api_key: str) -> bool:
         """
-        Atualiza a chave de API da OpenAI.
+        Atualiza a chave de API da Together.ai.
         
         Args:
             api_key: Nova chave de API
@@ -88,47 +84,47 @@ class SettingsManager:
             bool: True se a alteração foi bem-sucedida
         """
         if not api_key or len(api_key.strip()) < 10:
-            logger.error("Chave de API OpenAI inválida ou muito curta.")
+            logger.error("Chave de API Together.ai inválida ou muito curta.")
             return False
         
         # Atualizar configuração
-        self.current_settings['OPENAI_API_KEY'] = api_key
+        self.current_settings['TOGETHER_API_KEY'] = api_key
         
         # Salvar no arquivo .env
-        self._save_to_env("OPENAI_API_KEY", api_key)
+        self._save_to_env("TOGETHER_API_KEY", api_key)
         
         # Atualizar valor global (usado pelo sistema)
         import gesonelbot.config.settings
-        gesonelbot.config.settings.OPENAI_API_KEY = api_key
+        gesonelbot.config.settings.TOGETHER_API_KEY = api_key
         
-        logger.info("Chave de API OpenAI atualizada com sucesso.")
+        logger.info("Chave de API Together.ai atualizada com sucesso.")
         return True
     
-    def update_openai_model(self, model_name: str) -> bool:
+    def update_together_model(self, model_name: str) -> bool:
         """
-        Atualiza o modelo da OpenAI utilizado.
+        Atualiza o modelo da Together.ai utilizado.
         
         Args:
-            model_name: Nome do modelo OpenAI
+            model_name: Nome do modelo Together.ai
             
         Returns:
             bool: True se a alteração foi bem-sucedida
         """
         if not model_name:
-            logger.error("Nome de modelo inválido.")
+            logger.error("Nome do modelo não pode estar vazio.")
             return False
         
         # Atualizar configuração
-        self.current_settings['OPENAI_MODEL'] = model_name
+        self.current_settings['TOGETHER_MODEL'] = model_name
         
         # Salvar no arquivo .env
-        self._save_to_env("OPENAI_MODEL", model_name)
+        self._save_to_env("TOGETHER_MODEL", model_name)
         
         # Atualizar valor global (usado pelo sistema)
         import gesonelbot.config.settings
-        gesonelbot.config.settings.OPENAI_MODEL = model_name
+        gesonelbot.config.settings.TOGETHER_MODEL = model_name
         
-        logger.info(f"Modelo OpenAI alterado para: {model_name}")
+        logger.info(f"Modelo Together.ai configurado para: {model_name}")
         return True
     
     def get_current_settings(self) -> Dict[str, Any]:
@@ -141,17 +137,15 @@ class SettingsManager:
         # Atualizar com os valores mais recentes
         import gesonelbot.config.settings
         self.current_settings = {
-            "MODEL_TYPE": gesonelbot.config.settings.MODEL_TYPE,
-            "OPENAI_API_KEY": gesonelbot.config.settings.OPENAI_API_KEY,
-            "OPENAI_MODEL": gesonelbot.config.settings.OPENAI_MODEL,
-            "LOCAL_MODEL_PATH": gesonelbot.config.settings.LOCAL_MODEL_PATH,
-            "LOCAL_MODEL_TYPE": gesonelbot.config.settings.LOCAL_MODEL_TYPE
+            "API_PROVIDER": gesonelbot.config.settings.API_PROVIDER,
+            "TOGETHER_API_KEY": gesonelbot.config.settings.TOGETHER_API_KEY,
+            "TOGETHER_MODEL": gesonelbot.config.settings.TOGETHER_MODEL
         }
         
-        # Mascarar a API key por segurança
+        # Mascarar as API keys por segurança
         display_settings = self.current_settings.copy()
-        if display_settings['OPENAI_API_KEY']:
-            display_settings['OPENAI_API_KEY'] = f"{display_settings['OPENAI_API_KEY'][:5]}...{display_settings['OPENAI_API_KEY'][-4:]}"
+        if display_settings['TOGETHER_API_KEY']:
+            display_settings['TOGETHER_API_KEY'] = f"{display_settings['TOGETHER_API_KEY'][:5]}...{display_settings['TOGETHER_API_KEY'][-4:] if len(display_settings['TOGETHER_API_KEY']) > 8 else ''}"
         
         return display_settings
     
@@ -170,8 +164,38 @@ class SettingsManager:
             # Garantir que o diretório existe
             self.env_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # Atualizar o arquivo .env
-            dotenv.set_key(self.env_path, key, value)
+            # Remover aspas simples ou duplas do valor se existirem
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            elif value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+            
+            # Atualizar o arquivo .env manualmente para garantir formato correto
+            if not os.path.exists(self.env_path):
+                with open(self.env_path, 'w') as f:
+                    f.write(f"{key}={value}\n")
+            else:
+                # Ler o arquivo .env
+                with open(self.env_path, 'r') as f:
+                    lines = f.readlines()
+                
+                # Procurar e substituir a linha
+                key_found = False
+                for i, line in enumerate(lines):
+                    if line.strip().startswith(f"{key}=") or line.strip().startswith(f"{key} ="):
+                        lines[i] = f"{key}={value}\n"
+                        key_found = True
+                        break
+                
+                # Se a chave não foi encontrada, adicionar ao final
+                if not key_found:
+                    lines.append(f"{key}={value}\n")
+                
+                # Escrever de volta ao arquivo
+                with open(self.env_path, 'w') as f:
+                    f.writelines(lines)
+            
+            logger.info(f"Configuração {key} atualizada para {value}")
             return True
         except Exception as e:
             logger.error(f"Erro ao salvar configuração no arquivo .env: {str(e)}")
