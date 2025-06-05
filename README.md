@@ -1,6 +1,6 @@
-# GesonelBot - Seu chat bot local 🤖
+# GesonelBot 🤖 (EM DESENVOLVIMENTO)
 
-Um chatbot com IA para responder perguntas com base em documentos locais, sem necessidade de conexão constante com a internet para o funcionamento principal.
+Um chatbot com IA para responder perguntas com base em documentos locais.
 
 ## Visão Geral 📝
 
