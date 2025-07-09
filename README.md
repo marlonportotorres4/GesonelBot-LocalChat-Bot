@@ -1,6 +1,12 @@
+<<<<<<< HEAD
 # GesonelBot - Chatbot Local para Documentos
 
 ![GesonelBot Logo](docs/images/gesonelbot_logo.png)
+=======
+# GesonelBot 🤖 (EM DESENVOLVIMENTO)
+
+Um chatbot com IA para responder perguntas com base em documentos locais.
+>>>>>>> 61ccb77621135dae7dc16f0cf25536624f9eb4bc
 
 > Um assistente de IA local que responde a perguntas com base nos seus documentos
 
