@@ -6,6 +6,42 @@ o upload de documentos e a interação com perguntas e respostas.
 """
 import os
 import sys
+
+# Patch para contornar o erro de pyaudioop no Python 3.13+
+import sys
+import importlib.util
+
+# Verificar se o módulo audioop está disponível
+if importlib.util.find_spec("audioop") is None:
+    # Se não estiver disponível, criar um módulo falso
+    import types
+    audioop_module = types.ModuleType("audioop")
+    sys.modules["audioop"] = audioop_module
+    
+    # Adicionar funções básicas ao módulo falso
+    def dummy_func(*args, **kwargs):
+        return 0
+    
+    # Adicionar as funções mais comumente usadas
+    audioop_module.avg = dummy_func
+    audioop_module.avgpp = dummy_func
+    audioop_module.bias = dummy_func
+    audioop_module.cross = dummy_func
+    audioop_module.findfactor = dummy_func
+    audioop_module.findfit = dummy_func
+    audioop_module.findmax = dummy_func
+    audioop_module.getsample = dummy_func
+    audioop_module.lin2lin = dummy_func
+    audioop_module.lin2ulaw = dummy_func
+    audioop_module.minmax = dummy_func
+    audioop_module.mul = dummy_func
+    audioop_module.ratecv = dummy_func
+    audioop_module.reverse = dummy_func
+    audioop_module.rms = dummy_func
+    audioop_module.tomono = dummy_func
+    audioop_module.tostereo = dummy_func
+    audioop_module.ulaw2lin = dummy_func
+
 import gradio as gr
 from gesonelbot.core.document_processor import ingest_documents, get_total_upload_usage
 from gesonelbot.core.qa_engine import answer_question as qa_answer
@@ -16,7 +52,7 @@ from gesonelbot.core.llm_manager import llm_manager
 # Importação explícita das configurações
 from gesonelbot.config.settings import DOCS_DIR as SETTINGS_UPLOAD_DIR
 from gesonelbot.config.settings import VECTORSTORE_DIR
-from gesonelbot.config.settings import TOGETHER_API_KEY, TOGETHER_MODEL
+from gesonelbot.config.settings import LOCAL_MODEL_NAME
 
 # Definir configurações de limites de upload que não estão presentes no settings.py
 MAX_FILE_SIZE_MB = 20  # Tamanho máximo de arquivo em MB
@@ -269,87 +305,71 @@ def save_file(files):
 
 def answer_question(question, chat_history):
     """
-    Função para responder perguntas utilizando o motor de QA.
-    
-    Parâmetros:
-        question (str): A pergunta do usuário
-        chat_history (list): Histórico de conversas anteriores
-        
-    Retorna:
-        tuple: (histórico atualizado, '')
-    """
-    if not question:
-        return chat_history, ""
-    
-    # Utilizando o motor de QA para responder à pergunta
-    result = qa_answer(question)
-    
-    # Adicionar a pergunta e resposta ao histórico
-    chat_history = chat_history + [(question, result["answer"])]
-    
-    return chat_history, ""
-
-def update_model_type(model_choice):
-    """
-    Atualiza o tipo de modelo com base na escolha do usuário.
+    Processa uma pergunta do usuário e adiciona a resposta ao histórico de chat.
     
     Args:
-        model_choice: Escolha do usuário (apenas Together.ai é suportado)
-        
+        question: Pergunta do usuário
+        chat_history: Histórico atual do chat
+    
     Returns:
-        str: Mensagem de status
+        Histórico de chat atualizado e campo de mensagem limpo
     """
+    if not question or question.strip() == "":
+        return chat_history, ""
+    
+    # Adicionar a pergunta do usuário ao histórico
+    chat_history = chat_history + [(question, None)]
+    
     try:
-        # Apenas Together.ai é suportado
-        provider = "together"
-        settings_manager.update_api_provider(provider)
+        # Obter resposta do motor de QA
+        result = qa_answer(question)
         
-        # Verificar se há uma chave API configurada
-        model_info = get_model_info()
-        if model_info.get("type") == "together":
-            if not TOGETHER_API_KEY:
-                return "⚠️ A chave API da Together.ai não está configurada. Contate o administrador."
-            return f"✅ Provedor configurado: Together.ai com modelo {TOGETHER_MODEL}."
-        else:
-            return "⚠️ Erro na configuração do provedor."
-            
+        # Extrair a resposta
+        response = result.get("answer", "Desculpe, não consegui processar sua pergunta.")
+        
+        # Atualizar o histórico com a resposta
+        chat_history[-1] = (question, response)
     except Exception as e:
-        return f"❌ Erro ao configurar o provedor: {str(e)}"
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Erro ao processar pergunta: {str(e)}\n{error_details}")
+        
+        # Em caso de erro, adicionar mensagem de erro ao histórico
+        error_message = f"Ocorreu um erro ao processar sua pergunta: {str(e)}"
+        chat_history[-1] = (question, error_message)
+    
+    # Retornar o histórico atualizado e limpar o campo de pergunta
+    return chat_history, ""
 
 def get_model_status():
     """
-    Obtém o status atual do modelo.
+    Obtém o status atual do modelo de linguagem.
     
     Returns:
-        str: Informações sobre o modelo atual
+        str: Status formatado em Markdown
     """
-    model_info = get_model_info()
-    available_models = list_available_models()
+    from gesonelbot.core.llm_manager import llm_manager
     
-    # Obter configurações atuais
-    current_settings = settings_manager.get_current_settings()
+    model_info = llm_manager.get_model_info()
     
-    status = "### Status do Modelo\n\n"
+    status = "### Status do Modelo\n"
     
+    # Verificar se o modelo está carregado
     if model_info.get("status") == "carregado":
-        status += f"**Tipo de modelo:** {model_info.get('type', 'desconhecido')}\n"
-        status += f"**Nome do modelo:** {model_info.get('name', 'desconhecido')}\n"
-        status += f"**Modo:** {model_info.get('modo', 'desconhecido')}\n"
-        status += f"**Status:** {model_info.get('status', 'desconhecido')}\n\n"
+        status += "✅ **Estado**: Modelo carregado e pronto para uso\n\n"
+        status += f"**Nome do modelo**: {model_info.get('name', 'Desconhecido')}\n"
+        status += f"**Tipo**: Modelo local\n"
+        status += f"**Quantização**: {model_info.get('quantization', 'Nenhuma')}\n"
+        status += f"**Dispositivo**: {model_info.get('device', 'CPU')}\n"
+        status += f"**Temperatura**: {model_info.get('temperature', 0.7)}\n"
+        status += f"**Tokens máximos**: {model_info.get('max_tokens', 512)}\n"
     else:
-        status += f"**Status:** Modelo não carregado\n"
-        status += f"**Provedor configurado:** {current_settings.get('API_PROVIDER', 'desconhecido')}\n\n"
+        status += "⚠️ **Estado**: Modelo não carregado\n\n"
+        status += "O modelo será carregado automaticamente quando você fizer a primeira pergunta.\n"
+        status += f"**Nome do modelo configurado**: {model_info.get('name', 'Desconhecido')}\n"
+        status += "Isso pode levar alguns minutos na primeira execução."
     
-    status += "### Modelos Disponíveis\n\n"
-    
-    for model in available_models:
-        status += f"- **{model.get('name')}** ({model.get('type')})\n"
-        if "size_mb" in model:
-            status += f"  Tamanho: {model.get('size_mb')}MB\n"
-        if "status" in model:
-            status += f"  Status: {model.get('status')}\n"
-        # Remover informação sobre API key
-        status += "\n"
+    status += "\n"
     
     return status
 
@@ -505,16 +525,16 @@ def create_interface():
             
             # Informações sobre os modelos
             gr.Markdown("""
-            ### Modelo utilizado: Together.ai - Exaone 3.5
+            ### Modelo utilizado: TinyLlama - Modelo Local
 
-            **ExaOne 3.5**
-            - Modelo de IA avançado da Together.ai
-            - Excelente desempenho em tarefas de compreensão e resposta a perguntas
-            - Alta precisão para extração de informações de documentos
-            - Disponível através da API da Together.ai
+            **TinyLlama**
+            - Modelo de linguagem compacto executado localmente
+            - Projetado para funcionar em hardware comum
+            - Processamento de documentos e respostas sem necessidade de conexão constante com internet
+            - Todas as operações ocorrem no seu próprio computador
             
-            **Observação:** A configuração da chave de API é restrita ao administrador do sistema.
-            Se você precisar alterar configurações avançadas, entre em contato com o desenvolvedor.
+            **Observação:** O primeiro carregamento do modelo pode levar alguns minutos.
+            O desempenho depende das capacidades do seu hardware.
             """)
             
             # Atualizar status do modelo
@@ -543,9 +563,9 @@ def create_interface():
                
             3. **Configurações**:
                - Na terceira aba, você pode ver as configurações do sistema
-               - O sistema usa a API da Together.ai para respostas precisas
+               - O sistema usa um modelo de IA local para respostas rápidas sem dependência de serviços externos
             
-            **Nota:** Esta é a versão inicial do GesonelBot. Funcionalidades adicionais serão implementadas em breve.
+            **Nota:** Esta é a versão local do GesonelBot, otimizada para funcionar completamente em seu computador.
             """)
     
     return demo

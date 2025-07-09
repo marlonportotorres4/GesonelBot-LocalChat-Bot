@@ -7,6 +7,9 @@ utilizando o sistema de recuperação de informações e templates de prompts.
 import os
 import logging
 import time
+import re
+import threading
+import queue
 from typing import List, Dict, Any, Optional, Union
 
 # Componentes do GesonelBot
@@ -26,13 +29,32 @@ SYSTEM_PROMPT = """
 Você é um assistente de IA especializado em responder perguntas com base em documentos.
 
 INSTRUÇÕES IMPORTANTES:
-1. Use APENAS as informações contidas nos documentos fornecidos para responder às perguntas.
-2. Se a informação não estiver presente nos documentos, diga uma resposta simples e direta, por exemplo se um usuário perguntar se você sabe conjurar magia, responda: "Não sei conjurar magia, Estou aqui para responder perguntas sobre os documentos fornecidos" ou se perguntar "olá tudo bem com você?" responda: "Estou bem! E você? Estou aqui para responder perguntas sobre os documentos fornecidos".
-3. NÃO invente informações ou use seu conhecimento geral quando os documentos não contêm a resposta.
-4. Cite as fontes específicas dos documentos de onde extraiu as informações, somente dos DOCUMENTOS QUE VOCÊ EXTRAIU AS INFORMAÇÕES, não cite fontes de outros documentos caso não tenha extraído informações de outros documentos.
-5. Forneça respostas Objetivas e precisas quando os documentos contiverem as informações solicitadas.
-6. Analise cuidadosamente todo o conteúdo dos documentos antes de responder.
+1. Você deve ser cordial e amigável em suas respostas.
+2. Para saudações e perguntas básicas, responda de forma natural, mas sempre lembre que seu principal objetivo é analisar documentos.
+3. Quando receber uma saudação como "olá", "oi", "tudo bem?", responda de forma amigável e mencione que está disponível para ajudar com análise de documentos.
+4. Para perguntas sobre documentos, use APENAS as informações contidas nos documentos fornecidos.
+5. Se a informação não estiver presente nos documentos, diga claramente que não tem essa informação nos documentos analisados.
+6. NÃO invente informações ou use seu conhecimento geral quando os documentos não contêm a resposta.
+7. Cite as fontes específicas dos documentos de onde extraiu as informações.
+8. Forneça respostas objetivas e precisas quando os documentos contiverem as informações solicitadas.
+9. Mantenha suas respostas curtas e diretas, com no máximo 3 a 4 frases.
 """
+
+# Lista de padrões de saudações e perguntas básicas
+GREETING_PATTERNS = [
+    r'\b(?:olá|ola|oi|e aí|hello|hi|hey)\b',
+    r'\b(?:bom\s*dia|boa\s*tarde|boa\s*noite)\b',
+    r'\b(?:tudo\s*bem|como\s*vai|como\s*está)\b',
+    r'^(?:\.+|oi|hey)$'
+]
+
+# Respostas para saudações
+GREETING_RESPONSES = [
+    "Olá! Estou aqui para ajudar com suas perguntas sobre documentos. Como posso ajudar hoje?",
+    "Oi! Sou um assistente especializado em analisar documentos. Como posso ser útil?",
+    "Olá! Tudo bem? Estou disponível para ajudar a encontrar informações nos seus documentos.",
+    "Bom dia! Estou pronto para responder perguntas com base nos documentos que você carregou."
+]
 
 # Template de prompt padrão para QA
 PROMPT_TEMPLATES = {
@@ -41,6 +63,7 @@ Use apenas as informações fornecidas nos documentos abaixo para responder à p
 Se a informação não estiver presente nos documentos, diga que não tem informações suficientes para responder.
 Não invente ou suponha informações que não estejam explicitamente nos documentos.
 Cite as fontes dos documentos de onde você extraiu as informações.
+Mantenha sua resposta curta e direta, com no máximo 3-4 frases.
 
 Documentos:
 {contexts}
@@ -63,6 +86,78 @@ Documentos disponíveis:
 Pergunta: {question}
 """
 }
+
+# Tempo máximo para geração de resposta (em segundos)
+RESPONSE_TIMEOUT = 60
+
+def generate_response_with_timeout(prompt, temperature, max_tokens, system_prompt, timeout=RESPONSE_TIMEOUT):
+    """
+    Gera uma resposta com um timeout para evitar bloqueios.
+    
+    Args:
+        prompt: O prompt para o modelo
+        temperature: Temperatura para geração
+        max_tokens: Número máximo de tokens
+        system_prompt: Prompt do sistema
+        timeout: Tempo máximo em segundos
+        
+    Returns:
+        A resposta gerada ou uma mensagem de erro
+    """
+    result_queue = queue.Queue()
+    
+    def target_function():
+        try:
+            response = llm_manager.generate_response(
+                prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt
+            )
+            result_queue.put(("success", response))
+        except Exception as e:
+            result_queue.put(("error", str(e)))
+    
+    thread = threading.Thread(target=target_function)
+    thread.daemon = True
+    thread.start()
+    
+    try:
+        result_type, result = result_queue.get(timeout=timeout)
+        if result_type == "error":
+            return f"Erro ao gerar resposta: {result}"
+        return result
+    except queue.Empty:
+        return "Desculpe, a geração da resposta está demorando muito tempo. O modelo TinyLlama pode ter dificuldades para processar documentos complexos. Por favor, tente uma pergunta mais simples ou específica."
+
+def is_greeting(text: str) -> bool:
+    """
+    Verifica se o texto é uma saudação ou pergunta básica.
+    
+    Args:
+        text: O texto a ser verificado
+        
+    Returns:
+        bool: True se o texto for uma saudação, False caso contrário
+    """
+    text = text.lower().strip()
+    
+    # Verificar se o texto corresponde a algum dos padrões de saudação
+    for pattern in GREETING_PATTERNS:
+        if re.search(pattern, text):
+            return True
+    
+    return False
+
+def get_greeting_response() -> str:
+    """
+    Retorna uma resposta aleatória para saudações.
+    
+    Returns:
+        str: Uma resposta de saudação
+    """
+    import random
+    return random.choice(GREETING_RESPONSES)
 
 def answer_question(question: str, top_k: int = None) -> Dict[str, Any]:
     """
@@ -90,6 +185,20 @@ def answer_question(question: str, top_k: int = None) -> Dict[str, Any]:
     
     logger.info(f"Processando pergunta: '{question}'")
     start_time = time.time()
+    
+    # Verificar se é uma saudação
+    if is_greeting(question):
+        logger.info("Saudação detectada, retornando resposta amigável")
+        return {
+            "question": question,
+            "answer": get_greeting_response(),
+            "sources": [],
+            "metadata": {
+                "retrieved_documents": 0,
+                "is_greeting": True,
+                "processing_time_ms": int((time.time() - start_time) * 1000)
+            }
+        }
     
     try:
         # Recuperar documentos relevantes usando o retriever
@@ -122,6 +231,10 @@ def answer_question(question: str, top_k: int = None) -> Dict[str, Any]:
             source = doc.get("source", f"Fonte {i+1}")
             content = doc.get("content", "").strip()
             
+            # Limitar o tamanho do conteúdo para evitar sobrecarregar o modelo
+            if len(content) > 1000:
+                content = content[:1000] + "... (conteúdo truncado)"
+            
             # Formatar o conteúdo do documento de forma clara
             formatted_content = f"""DOCUMENTO {i+1}: {file_name}
 {content}
@@ -150,8 +263,9 @@ def answer_question(question: str, top_k: int = None) -> Dict[str, Any]:
         # Log do prompt para debug
         logger.debug(f"Prompt completo: {prompt[:500]}...")
         
-        # Gerar a resposta usando o LLM Manager com o sistema prompt personalizado
-        answer = llm_manager.generate_response(
+        # Gerar a resposta usando o LLM Manager com o sistema prompt personalizado e timeout
+        logger.info("Iniciando geração de resposta com timeout")
+        answer = generate_response_with_timeout(
             prompt,
             temperature=QA_TEMPERATURE,
             max_tokens=QA_MAX_TOKENS,

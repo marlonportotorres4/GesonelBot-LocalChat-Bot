@@ -1,8 +1,15 @@
+"""
+Configuração inicial do GesonelBot.
+
+Este script ajuda na instalação e configuração inicial do GesonelBot.
+"""
 import os
 import sys
+import shutil
 import subprocess
 import importlib.util
 from tqdm import tqdm
+from pathlib import Path
 
 # Constantes
 ENV_FILE = ".env"
@@ -181,15 +188,174 @@ def prepare_for_run():
     return success
 
 def main():
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "setup":
-            return setup()
-        elif sys.argv[1] == "prepare":
-            return prepare_for_run()
+    """Executa a configuração inicial do GesonelBot."""
+    print("=" * 50)
+    print(" 📚 GesonelBot - Assistente Local de Documentos")
+    print("=" * 50)
+    print("\nBem-vindo ao assistente de configuração do GesonelBot!")
+    print("\nEste script irá ajudá-lo a configurar o ambiente necessário para executar o GesonelBot.")
+    
+    # Verificar Python
+    python_version = sys.version_info
+    if python_version.major < 3 or (python_version.major == 3 and python_version.minor < 8):
+        print("\n❌ Versão do Python incompatível!")
+        print(f"Versão atual: {python_version.major}.{python_version.minor}.{python_version.micro}")
+        print("GesonelBot requer Python 3.8 ou superior.")
+        sys.exit(1)
     else:
-        # Comportamento padrão (executado quando chamado sem argumentos)
-        return setup()
+        print(f"\n✅ Python {python_version.major}.{python_version.minor}.{python_version.micro} detectado.")
+    
+    # Criar diretórios
+    base_dir = Path(__file__).resolve().parent.parent
+    data_dir = base_dir / "data"
+    docs_dir = data_dir / "docs"
+    indexes_dir = data_dir / "indexes"
+    models_dir = data_dir / "models"
+    vectorstore_dir = indexes_dir / "vectorstore"
+    
+    print("\nCriando diretórios necessários...")
+    
+    for directory in [data_dir, docs_dir, indexes_dir, models_dir, vectorstore_dir]:
+        directory.mkdir(parents=True, exist_ok=True)
+        print(f"✓ Diretório criado: {directory}")
+    
+    # Criar ambiente virtual
+    print("\nDeseja criar um ambiente virtual Python para o GesonelBot?")
+    choice = input("Isso é recomendado para isolar as dependências [S/n]: ").strip().lower()
+    
+    if choice in ['', 's', 'sim', 'y', 'yes']:
+        print("\nCriando ambiente virtual...")
+        venv_dir = base_dir / "venv"
+        
+        # Verificar se já existe
+        if venv_dir.exists():
+            print("Um ambiente virtual já existe. Deseja recriá-lo?")
+            recreate = input("Isso irá remover o ambiente existente [s/N]: ").strip().lower()
+            
+            if recreate in ['s', 'sim', 'y', 'yes']:
+                print("Removendo ambiente virtual existente...")
+                shutil.rmtree(venv_dir)
+            else:
+                print("Mantendo ambiente virtual existente.")
+                venv_dir = None
+        
+        # Criar novo ambiente se necessário
+        if venv_dir:
+            try:
+                subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+                print("✅ Ambiente virtual criado com sucesso!")
+                
+                # Determinar o script de ativação
+                if os.name == 'nt':  # Windows
+                    activate_script = venv_dir / "Scripts" / "activate.bat"
+                    pip_path = venv_dir / "Scripts" / "pip"
+                else:  # Unix/Linux/Mac
+                    activate_script = venv_dir / "bin" / "activate"
+                    pip_path = venv_dir / "bin" / "pip"
+                
+                print(f"\nPara ativar o ambiente virtual, execute:")
+                if os.name == 'nt':
+                    print(f"    {activate_script}")
+                else:
+                    print(f"    source {activate_script}")
+            except Exception as e:
+                print(f"❌ Erro ao criar ambiente virtual: {str(e)}")
+    else:
+        print("Pulando a criação do ambiente virtual.")
+    
+    # Instalar dependências
+    print("\nDeseja instalar as dependências necessárias?")
+    choice = input("Isso instalará as bibliotecas Python requeridas pelo GesonelBot [S/n]: ").strip().lower()
+    
+    if choice in ['', 's', 'sim', 'y', 'yes']:
+        print("\nInstalando dependências...")
+        try:
+            packages = ['python-dotenv', 'transformers', 'torch', 'gradio', 'langchain', 'langchain_community', 'sentence-transformers', 'chromadb']
+            
+            # Usar pip do ambiente virtual, se foi criado
+            if 'venv_dir' in locals() and venv_dir:
+                if os.name == 'nt':  # Windows
+                    pip_cmd = str(venv_dir / "Scripts" / "pip")
+                else:  # Unix/Linux/Mac
+                    pip_cmd = str(venv_dir / "bin" / "pip")
+            else:
+                pip_cmd = "pip"
+            
+            # Atualizar pip primeiro
+            subprocess.run([pip_cmd, "install", "--upgrade", "pip"], check=True)
+            
+            # Instalar cada pacote separadamente para melhor tratamento de erros
+            for package in packages:
+                print(f"Instalando {package}...")
+                subprocess.run([pip_cmd, "install", package], check=True)
+            
+            print("✅ Dependências instaladas com sucesso!")
+        except Exception as e:
+            print(f"❌ Erro ao instalar dependências: {str(e)}")
+            print("\nVocê pode instalá-las manualmente com:")
+            print("    pip install -r requirements.txt")
+    else:
+        print("Pulando a instalação de dependências.")
+    
+    # Configurar arquivo .env
+    env_file = base_dir / ".env"
+    env_example = base_dir / "env.example"
+    
+    if not env_file.exists() and env_example.exists():
+        print("\nArquivo .env não encontrado. Deseja criar um com as configurações padrão?")
+        choice = input("Isso criará o arquivo .env necessário para o GesonelBot [S/n]: ").strip().lower()
+        
+        if choice in ['', 's', 'sim', 'y', 'yes']:
+            print("\nCriando arquivo .env...")
+            try:
+                shutil.copy(env_example, env_file)
+                print("✅ Arquivo .env criado com sucesso!")
+            except Exception as e:
+                print(f"❌ Erro ao criar arquivo .env: {str(e)}")
+                print(f"Por favor, copie manualmente o arquivo {env_example} para {env_file}")
+    else:
+        print("\nArquivo .env já existe. Mantendo configurações existentes.")
+    
+    # Verificar modelo TinyLlama
+    print("\nDeseja baixar o modelo TinyLlama agora?")
+    print("Isso ocupará aproximadamente 2GB de espaço em disco.")
+    choice = input("O download é recomendado para um funcionamento mais rápido na primeira execução [S/n]: ").strip().lower()
+    
+    if choice in ['', 's', 'sim', 'y', 'yes']:
+        print("\nBaixando modelo TinyLlama. Isso pode levar alguns minutos...")
+        try:
+            # Comando para baixar o modelo usando a biblioteca Transformers
+            download_cmd = (
+                "from transformers import AutoTokenizer, AutoModelForCausalLM; "
+                "tokenizer = AutoTokenizer.from_pretrained('TinyLlama/TinyLlama-1.1B-Chat-v1.0'); "
+                "model = AutoModelForCausalLM.from_pretrained('TinyLlama/TinyLlama-1.1B-Chat-v1.0', device_map='auto', load_in_8bit=True)"
+            )
+            
+            # Executar comando usando o Python do ambiente virtual, se disponível
+            if 'venv_dir' in locals() and venv_dir:
+                if os.name == 'nt':  # Windows
+                    python_cmd = str(venv_dir / "Scripts" / "python")
+                else:  # Unix/Linux/Mac
+                    python_cmd = str(venv_dir / "bin" / "python")
+            else:
+                python_cmd = sys.executable
+            
+            subprocess.run([python_cmd, "-c", download_cmd], check=True)
+            print("✅ Modelo TinyLlama baixado com sucesso!")
+        except Exception as e:
+            print(f"❌ Erro ao baixar o modelo: {str(e)}")
+            print("O modelo será baixado automaticamente na primeira execução do GesonelBot.")
+    else:
+        print("Pulando o download do modelo.")
+    
+    # Concluir
+    print("\n" + "=" * 50)
+    print(" 🎉 Configuração do GesonelBot concluída!")
+    print("=" * 50)
+    print("\nPara iniciar o GesonelBot, execute:")
+    print("    python gesonelbot.py")
+    print("\nOu use o script batch no Windows:")
+    print("    scripts\\executar.bat")
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1) 
+    main() 

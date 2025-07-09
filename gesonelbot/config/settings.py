@@ -42,14 +42,14 @@ CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 SUPPORTED_EXTENSIONS = ['.txt', '.pdf', '.docx', '.md', '.csv', '.json', '.html']
 
 # Configurações do modelo de embeddings
-EMBEDDINGS_MODEL = "all-MiniLM-L6-v2"  # Modelo fixo para embeddings
+EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "all-MiniLM-L6-v2")
 
-# Configurações do modelo de linguagem (LLM)
-API_PROVIDER = "together"  # Fixado em together
-
-# Configurações para API da Together.ai
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "")
-TOGETHER_MODEL = os.getenv("TOGETHER_MODEL", "lgai/exaone-3-5-32b-instruct")
+# Configurações do modelo local
+LOCAL_MODEL_NAME = os.getenv("LOCAL_MODEL_NAME", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", os.path.join(DATA_DIR, "models"))
+USE_8BIT_QUANTIZATION = os.getenv("USE_8BIT_QUANTIZATION", "True").lower() in ('true', '1', 't')
+USE_4BIT_QUANTIZATION = os.getenv("USE_4BIT_QUANTIZATION", "False").lower() in ('true', '1', 't')
+USE_CPU_ONLY = os.getenv("USE_CPU_ONLY", "False").lower() in ('true', '1', 't')
 
 # Configurações de geração de resposta
 QA_MAX_TOKENS = int(os.getenv("QA_MAX_TOKENS", "512"))
@@ -100,11 +100,6 @@ def verify_config():
     Verifica se todas as configurações necessárias estão presentes.
     """
     all_ok = True
-    
-    # Verificar API key da Together.ai
-    if not TOGETHER_API_KEY:
-        print("AVISO: Chave API da Together.ai não configurada no arquivo .env")
-        all_ok = False
     
     # Verificar diretórios
     for dir_path in [DATA_DIR, DOCS_DIR, INDEXES_DIR, MODELS_DIR, LOGS_DIR]:
