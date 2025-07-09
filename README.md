@@ -84,7 +84,7 @@ GesonelBot é um chatbot que utiliza processamento de linguagem natural e recupe
 
 6. Inicie o aplicativo:
    ```
-   python gesonelbot.py
+   scripts\executar.bat
    ```
 
 ## 📝 Uso
@@ -112,10 +112,6 @@ GesonelBot utiliza uma arquitetura moderna para processamento de documentos e re
 2. **Armazenamento Vetorial**: Os embeddings são armazenados em um banco de dados ChromaDB local
 3. **Recuperação de Informações**: Quando uma pergunta é feita, o sistema recupera os chunks mais relevantes
 4. **Geração de Resposta**: O modelo TinyLlama gera respostas com base nos chunks recuperados e na pergunta do usuário
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Por favor, sinta-se à vontade para enviar pull requests ou abrir issues.
 
 ## 📄 Licença
 
