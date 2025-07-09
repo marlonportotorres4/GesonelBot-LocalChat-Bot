@@ -1,5 +1,5 @@
 
-# GesonelBot 🤖 (EM DESENVOLVIMENTO)
+# GesonelBot 🤖
 
 Um chatbot com IA para responder perguntas com base em documentos locais.
 
