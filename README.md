@@ -9,13 +9,13 @@ GesonelBot é um chatbot que utiliza processamento de linguagem natural e recupe
 
 ## 📸 Screenshots
 
-### Interface de Chat
+### Tela inicial - Upload de Doc
 ![Tela Principal](docs/images/telaprincipal.png)
 
-### Upload de Documentos
+### Interface do Chat
 ![Tela do Chat](docs/images/teladochat.png)
 
-### Upload de Documentos
+### Tela final - Informações adicionais
 ![Tela Final](docs/images/telafinal.png)
 
 
